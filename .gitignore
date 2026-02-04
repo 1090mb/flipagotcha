@@ -1,0 +1,23 @@
+# Build artefacts
+/dist/
+/build/
+/obj/
+*.dfu
+*.elf
+*.map
+*.bin
+*.hex
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Python cache
+__pycache__/
+*.pyc
+
+# macOS / Windows junk
+.DS_Store
+Thumbs.db
