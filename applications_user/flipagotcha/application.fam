@@ -1,9 +1,20 @@
-{
-    "name": "flipagotcha",
-    "author": "1090mb",
-    "version": "1.0.0",
-    "description": "A tiny Pwnagotchi‑style app that draws a blinking face and can talk to an ESP‑32 over UART.",
-    "category": "Utility",
-    "binary": "flipagotcha.fap",
-    "icon": "assets/icon.png"
-}
+App(
+    appid="flipagotcha",
+    name="Flipagotcha",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="flipagotcha_main",
+    stack_size=4 * 1024,
+    fap_category="GPIO",
+    fap_version="1.0.0",
+    fap_icon="assets/icon.png",
+    fap_description="A tiny Pwnagotchi-style app that draws a blinking face and can talk to an ESP-32 over UART.",
+    fap_author="1090mb",
+    fap_weburl="https://github.com/1090mb/flipagotcha",
+    sources=[
+        "src/main.c",
+        "src/ui/view.c",
+        "src/ui/draw.c",
+        "src/hw/uart.c",
+    ],
+    fap_icon_assets="assets",
+)
