@@ -5,5 +5,5 @@
     "description": "A tiny Pwnagotchi‑style app that draws a blinking face and can talk to an ESP‑32 over UART.",
     "category": "Utility",
     "binary": "flipagotcha.fap",
-    "icon": "icon.png"
+    "icon": "assets/icon.png"
 }
