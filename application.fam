@@ -1,9 +1,0 @@
-{
-    "name": "flipagotcha",
-    "author": "1090mb",
-    "version": "1.0.0",
-    "description": "A tiny Pwnagotchi‑style app that draws a blinking face and can talk to an ESP‑32 over UART.",
-    "category": "Utility",
-    "binary": "flipagotcha.fap",
-    "icon": "icon.png"
-}
