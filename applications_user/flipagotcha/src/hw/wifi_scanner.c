@@ -509,3 +509,19 @@ bool wifi_scanner_is_esp32_connected(WifiScanner* scanner) {
     
     return connected;
 }
+
+// Actively query UART to verify if ESP32 (Marauder) is responding and update
+// the internal connection flag. Returns the new connection state.
+bool wifi_scanner_refresh_connection(WifiScanner* scanner) {
+    if (!scanner) return false;
+
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return false;
+    }
+
+    bool connected = uart_is_connected();
+    scanner->esp32_connected = connected;
+
+    furi_mutex_release(scanner->mutex);
+    return connected;
+}

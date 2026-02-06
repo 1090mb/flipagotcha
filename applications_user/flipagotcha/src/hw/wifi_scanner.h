@@ -46,3 +46,7 @@ bool wifi_scanner_is_capturing(WifiScanner* scanner);
 
 // Check if ESP32 is connected
 bool wifi_scanner_is_esp32_connected(WifiScanner* scanner);
+
+// Refresh/check the ESP32 connection state (queries UART) and update internal flag
+// Returns the new connection state
+bool wifi_scanner_refresh_connection(WifiScanner* scanner);

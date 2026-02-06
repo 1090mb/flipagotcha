@@ -24,7 +24,8 @@ static void draw_callback(Canvas* canvas, void* ctx) {
               40,               // x offset
               20,               // y offset
               st->eyes_closed,
-              st->mouth_frown);
+              /* Show happy when ESP32 connected, frown when not */
+              (st->wifi_scanner && !wifi_scanner_is_esp32_connected(st->wifi_scanner)));
     
     /* Draw WiFi status */
     canvas_set_font(canvas, FontSecondary);
@@ -33,6 +34,30 @@ static void draw_callback(Canvas* canvas, void* ctx) {
     if (st->wifi_scanner) {
         bool esp32_connected = wifi_scanner_is_esp32_connected(st->wifi_scanner);
         canvas_draw_str(canvas, 90, 10, esp32_connected ? "ESP32" : "DEMO");
+
+        /* Small monochrome status icon (6x6) to reinforce connection state.
+         * - Connected: filled square
+         * - Not connected: outlined square with X
+         * Fits official 128x64 monochrome LCD.
+         */
+        int icon_x = 114;
+        int icon_y = 8;
+        if (esp32_connected) {
+            for (int xx = icon_x; xx < icon_x + 6; xx++) {
+                for (int yy = icon_y; yy < icon_y + 6; yy++) {
+                    canvas_draw_point(canvas, xx, yy);
+                }
+            }
+        } else {
+            // Outline
+            canvas_draw_line(canvas, icon_x, icon_y, icon_x + 5, icon_y);
+            canvas_draw_line(canvas, icon_x, icon_y + 5, icon_x + 5, icon_y + 5);
+            canvas_draw_line(canvas, icon_x, icon_y, icon_x, icon_y + 5);
+            canvas_draw_line(canvas, icon_x + 5, icon_y, icon_x + 5, icon_y + 5);
+            // X
+            canvas_draw_line(canvas, icon_x, icon_y, icon_x + 5, icon_y + 5);
+            canvas_draw_line(canvas, icon_x + 5, icon_y, icon_x, icon_y + 5);
+        }
     }
     
     if (st->scanning) {
@@ -148,7 +173,16 @@ void ui_thread_entry(void* args) {
     /* Keep thread alive until the user exits */
     while (!furi_thread_is_stopped(furi_thread_get_current())) {
         furi_delay_ms(200);
-        
+
+        static uint8_t refresh_ctr = 0;
+        refresh_ctr++;
+        if (refresh_ctr >= 10) { // ~2 seconds
+            refresh_ctr = 0;
+            if (st->wifi_scanner) {
+                wifi_scanner_refresh_connection(st->wifi_scanner);
+            }
+        }
+
         /* Update network and packet counts if scanning */
         if (st->scanning && st->wifi_scanner) {
             st->network_count = wifi_scanner_get_network_count(st->wifi_scanner);
