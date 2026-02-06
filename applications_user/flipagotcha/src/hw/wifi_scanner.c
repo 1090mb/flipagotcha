@@ -284,7 +284,7 @@ bool wifi_scanner_start_handshake(WifiScanner* scanner, uint8_t network_index) {
     if (scanner->esp32_connected && network_index < scanner->network_count) {
         // Build sniffpmkid command with channel
         // Format: "sniffpmkid -c <channel> -d\n"
-        char cmd[64];
+        char cmd[MARAUDER_CMD_BUFFER_SIZE];
         int channel = scanner->networks[network_index].channel;
         snprintf(cmd, sizeof(cmd), "%s -c %d -d\n", MARAUDER_CMD_SNIFFPMKID, channel);
         result = uart_write_str(cmd);

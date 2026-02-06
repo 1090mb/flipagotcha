@@ -157,17 +157,26 @@ void uart_set_rx_callback(UartRxCallback callback, void* context) {
 bool uart_is_connected(void) {
     if (!uart_handle) return false;
     
-    // Try sending a test command and waiting for response
-    // Send "help" command and check for response
-    const char* test_cmd = "\n";
+    // Clear any stale data in buffer first
+    if (rx_mutex && furi_mutex_acquire(rx_mutex, FuriWaitForever) == FuriStatusOk) {
+        rx_buffer_pos = 0;
+        furi_mutex_release(rx_mutex);
+    }
+    
+    // Send "help" command to verify Marauder firmware is responding
+    // Marauder should respond with command list
+    const char* test_cmd = MARAUDER_CMD_HELP;
     uart_write_str(test_cmd);
     
-    // Wait a bit and check if we got any response
-    furi_delay_ms(100);
+    // Wait for response
+    furi_delay_ms(UART_CONNECTION_TEST_TIMEOUT_MS);
     
+    // Check if we got any response
     bool has_data = false;
     if (rx_mutex && furi_mutex_acquire(rx_mutex, FuriWaitForever) == FuriStatusOk) {
         has_data = (rx_buffer_pos > 0);
+        // Clear buffer after test
+        rx_buffer_pos = 0;
         furi_mutex_release(rx_mutex);
     }
     
