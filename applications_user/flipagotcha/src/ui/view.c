@@ -28,6 +28,13 @@ static void draw_callback(Canvas* canvas, void* ctx) {
     
     /* Draw WiFi status */
     canvas_set_font(canvas, FontSecondary);
+    
+    /* Show ESP32 connection status */
+    if (st->wifi_scanner) {
+        bool esp32_connected = wifi_scanner_is_esp32_connected(st->wifi_scanner);
+        canvas_draw_str(canvas, 90, 10, esp32_connected ? "ESP32" : "DEMO");
+    }
+    
     if (st->scanning) {
         canvas_draw_str(canvas, 2, 10, "Scanning...");
         

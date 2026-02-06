@@ -4,6 +4,7 @@
 #include <storage/storage.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 struct WifiScanner {
     WifiNetwork networks[MAX_NETWORKS];
@@ -13,8 +14,14 @@ struct WifiScanner {
     uint16_t packet_capacity;
     bool is_scanning;
     bool is_capturing;
+    bool esp32_connected;
     FuriMutex* mutex;
+    FuriString* rx_buffer;  // Buffer for incoming UART data
 };
+
+// Forward declarations
+static void wifi_scanner_parse_scanap_line(WifiScanner* scanner, const char* line);
+static void wifi_scanner_uart_rx_callback(const uint8_t* data, size_t len, void* context);
 
 WifiScanner* wifi_scanner_alloc(void) {
     WifiScanner* scanner = malloc(sizeof(WifiScanner));
@@ -36,6 +43,20 @@ WifiScanner* wifi_scanner_alloc(void) {
         return NULL;
     }
     
+    scanner->rx_buffer = furi_string_alloc();
+    if (!scanner->rx_buffer) {
+        furi_mutex_free(scanner->mutex);
+        free(scanner->packets);
+        free(scanner);
+        return NULL;
+    }
+    
+    // Set up UART callback
+    uart_set_rx_callback(wifi_scanner_uart_rx_callback, scanner);
+    
+    // Check if ESP32 is connected
+    scanner->esp32_connected = uart_is_connected();
+    
     return scanner;
 }
 
@@ -48,27 +69,134 @@ void wifi_scanner_free(WifiScanner* scanner) {
     if (scanner->packets) {
         free(scanner->packets);
     }
+    if (scanner->rx_buffer) {
+        furi_string_free(scanner->rx_buffer);
+    }
     free(scanner);
+}
+
+// UART receive callback - processes data from ESP32 Marauder
+static void wifi_scanner_uart_rx_callback(const uint8_t* data, size_t len, void* context) {
+    WifiScanner* scanner = (WifiScanner*)context;
+    if (!scanner || !data || len == 0) return;
+    
+    if (furi_mutex_acquire(scanner->mutex, 50) != FuriStatusOk) {
+        return; // Skip if we can't acquire mutex quickly
+    }
+    
+    // Append received data to buffer
+    for (size_t i = 0; i < len; i++) {
+        if (data[i] == '\n') {
+            // Process complete line
+            const char* line = furi_string_get_cstr(scanner->rx_buffer);
+            
+            // Parse scanap results
+            if (scanner->is_scanning && strlen(line) > 0) {
+                wifi_scanner_parse_scanap_line(scanner, line);
+            }
+            
+            // Clear buffer for next line
+            furi_string_reset(scanner->rx_buffer);
+        } else if (data[i] >= 32 && data[i] <= 126) {
+            // Only append printable characters
+            furi_string_push_back(scanner->rx_buffer, data[i]);
+        }
+    }
+    
+    furi_mutex_release(scanner->mutex);
+}
+
+// Parse a line from "scanap" output
+// Format examples from Marauder:
+// "[CH 06] <SSID> (-45dBm) [WPA2]"
+static void wifi_scanner_parse_scanap_line(WifiScanner* scanner, const char* line) {
+    if (!line || strlen(line) < 10) return;
+    if (scanner->network_count >= MAX_NETWORKS) return;
+    
+    // Look for channel marker
+    const char* ch_start = strstr(line, "[CH ");
+    if (!ch_start) return;
+    
+    WifiNetwork* net = &scanner->networks[scanner->network_count];
+    memset(net, 0, sizeof(WifiNetwork));
+    
+    // Parse channel
+    int channel = 0;
+    if (sscanf(ch_start, "[CH %d]", &channel) == 1) {
+        net->channel = (uint8_t)channel;
+    }
+    
+    // Find SSID (text between "] " and " (")
+    const char* ssid_start = strstr(ch_start, "] ");
+    const char* ssid_end = strstr(ssid_start ? ssid_start : line, " (");
+    
+    if (ssid_start && ssid_end && ssid_end > ssid_start + 2) {
+        ssid_start += 2;
+        size_t ssid_len = ssid_end - ssid_start;
+        if (ssid_len > MAX_SSID_LEN) ssid_len = MAX_SSID_LEN;
+        strncpy(net->ssid, ssid_start, ssid_len);
+        net->ssid[ssid_len] = '\0';
+    }
+    
+    // Parse RSSI
+    const char* rssi_start = strstr(line, "(");
+    if (rssi_start) {
+        int rssi = 0;
+        if (sscanf(rssi_start, "(%ddBm)", &rssi) == 1) {
+            net->rssi = (int8_t)rssi;
+        }
+    }
+    
+    // Parse encryption
+    if (strstr(line, "[WPA3]")) {
+        net->encryption = 3;
+    } else if (strstr(line, "[WPA2]")) {
+        net->encryption = 2;
+    } else if (strstr(line, "[WPA]")) {
+        net->encryption = 1;
+    } else if (strstr(line, "[OPEN]")) {
+        net->encryption = 0;
+    }
+    
+    // Only add if we got at least an SSID
+    if (strlen(net->ssid) > 0) {
+        scanner->network_count++;
+    }
 }
 
 bool wifi_scanner_start_scan(WifiScanner* scanner) {
     if (!scanner) return false;
     
-    furi_mutex_acquire(scanner->mutex, FuriWaitForever);
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return false;
+    }
     
     // Reset network list
     scanner->network_count = 0;
     memset(scanner->networks, 0, sizeof(scanner->networks));
+    furi_string_reset(scanner->rx_buffer);
     
-    // Send scan command to ESP32 via UART
-    uint8_t cmd = CMD_SCAN_NETWORKS;
-    bool result = uart_write(&cmd, 1);
+    // Check if ESP32 is connected
+    if (!scanner->esp32_connected) {
+        scanner->esp32_connected = uart_is_connected();
+    }
     
-    if (result) {
+    bool result = false;
+    
+    if (scanner->esp32_connected) {
+        // Send Marauder scanap command
+        result = uart_write_str(MARAUDER_CMD_SCANAP);
+        
+        if (result) {
+            scanner->is_scanning = true;
+        }
+    }
+    
+    // Fallback to mock data if ESP32 not connected
+    if (!scanner->esp32_connected || !result) {
         scanner->is_scanning = true;
         
-        // Simulate discovering some networks (in production, this would read from UART)
-        // For demonstration purposes, we'll add some mock data
+        // Add mock data for demonstration
         scanner->network_count = 3;
         
         // Network 1
@@ -88,6 +216,8 @@ bool wifi_scanner_start_scan(WifiScanner* scanner) {
         scanner->networks[2].rssi = -78;
         scanner->networks[2].channel = 1;
         scanner->networks[2].encryption = 3; // WPA3
+        
+        result = true;
     }
     
     furi_mutex_release(scanner->mutex);
@@ -97,11 +227,14 @@ bool wifi_scanner_start_scan(WifiScanner* scanner) {
 void wifi_scanner_stop_scan(WifiScanner* scanner) {
     if (!scanner) return;
     
-    furi_mutex_acquire(scanner->mutex, FuriWaitForever);
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return;
+    }
     
-    // Send stop command
-    uint8_t cmd = CMD_STOP;
-    uart_write(&cmd, 1);
+    // Send stopscan command to Marauder
+    if (scanner->esp32_connected) {
+        uart_write_str(MARAUDER_CMD_STOPSCAN);
+    }
     
     scanner->is_scanning = false;
     
@@ -111,7 +244,10 @@ void wifi_scanner_stop_scan(WifiScanner* scanner) {
 uint8_t wifi_scanner_get_network_count(WifiScanner* scanner) {
     if (!scanner) return 0;
     
-    furi_mutex_acquire(scanner->mutex, FuriWaitForever);
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return 0;
+    }
+    
     uint8_t count = scanner->network_count;
     furi_mutex_release(scanner->mutex);
     
@@ -121,7 +257,9 @@ uint8_t wifi_scanner_get_network_count(WifiScanner* scanner) {
 const WifiNetwork* wifi_scanner_get_network(WifiScanner* scanner, uint8_t index) {
     if (!scanner) return NULL;
     
-    furi_mutex_acquire(scanner->mutex, FuriWaitForever);
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return NULL;
+    }
     
     if (index >= scanner->network_count) {
         furi_mutex_release(scanner->mutex);
@@ -137,16 +275,23 @@ const WifiNetwork* wifi_scanner_get_network(WifiScanner* scanner, uint8_t index)
 bool wifi_scanner_start_handshake(WifiScanner* scanner, uint8_t network_index) {
     if (!scanner || network_index >= scanner->network_count) return false;
     
-    furi_mutex_acquire(scanner->mutex, FuriWaitForever);
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return false;
+    }
     
-    // Send handshake command with network index
-    uint8_t cmd[2] = {CMD_START_HANDSHAKE, network_index};
-    bool result = uart_write(cmd, 2);
+    bool result = false;
     
-    // In production, this would initiate a deauth attack and capture handshake
-    // For now, we simulate by capturing some packets
-    if (result) {
-        // Simulate handshake packet capture
+    if (scanner->esp32_connected && network_index < scanner->network_count) {
+        // Build sniffpmkid command with channel
+        // Format: "sniffpmkid -c <channel> -d\n"
+        char cmd[64];
+        int channel = scanner->networks[network_index].channel;
+        snprintf(cmd, sizeof(cmd), "%s -c %d -d\n", MARAUDER_CMD_SNIFFPMKID, channel);
+        result = uart_write_str(cmd);
+    }
+    
+    // Fallback to mock handshake capture
+    if (!scanner->esp32_connected || !result) {
         if (scanner->packet_count < scanner->packet_capacity) {
             CapturedPacket* pkt = &scanner->packets[scanner->packet_count];
             pkt->length = MOCK_HANDSHAKE_SIZE;
@@ -154,6 +299,7 @@ bool wifi_scanner_start_handshake(WifiScanner* scanner, uint8_t network_index) {
             pkt->channel = scanner->networks[network_index].channel;
             memset(pkt->data, 0xAA, pkt->length); // Mock data
             scanner->packet_count++;
+            result = true;
         }
     }
     
@@ -164,14 +310,20 @@ bool wifi_scanner_start_handshake(WifiScanner* scanner, uint8_t network_index) {
 bool wifi_scanner_start_capture(WifiScanner* scanner) {
     if (!scanner) return false;
     
-    furi_mutex_acquire(scanner->mutex, FuriWaitForever);
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return false;
+    }
     
-    // Send capture command
-    uint8_t cmd = CMD_CAPTURE_PACKET;
-    bool result = uart_write(&cmd, 1);
+    bool result = false;
     
-    if (result) {
+    // Send Marauder sniffraw command
+    if (scanner->esp32_connected) {
+        result = uart_write_str(MARAUDER_CMD_SNIFFRAW);
+    }
+    
+    if (result || !scanner->esp32_connected) {
         scanner->is_capturing = true;
+        result = true;
     }
     
     furi_mutex_release(scanner->mutex);
@@ -181,10 +333,14 @@ bool wifi_scanner_start_capture(WifiScanner* scanner) {
 void wifi_scanner_stop_capture(WifiScanner* scanner) {
     if (!scanner) return;
     
-    furi_mutex_acquire(scanner->mutex, FuriWaitForever);
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return;
+    }
     
-    uint8_t cmd = CMD_STOP;
-    uart_write(&cmd, 1);
+    // Send stopscan command
+    if (scanner->esp32_connected) {
+        uart_write_str(MARAUDER_CMD_STOPSCAN);
+    }
     
     scanner->is_capturing = false;
     
@@ -194,7 +350,10 @@ void wifi_scanner_stop_capture(WifiScanner* scanner) {
 uint16_t wifi_scanner_get_packet_count(WifiScanner* scanner) {
     if (!scanner) return 0;
     
-    furi_mutex_acquire(scanner->mutex, FuriWaitForever);
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return 0;
+    }
+    
     uint16_t count = scanner->packet_count;
     furi_mutex_release(scanner->mutex);
     
@@ -204,15 +363,23 @@ uint16_t wifi_scanner_get_packet_count(WifiScanner* scanner) {
 bool wifi_scanner_save_capture(WifiScanner* scanner, const char* filename) {
     if (!scanner || !filename) return false;
     
-    furi_mutex_acquire(scanner->mutex, FuriWaitForever);
-    
-    // Send save command
-    uint8_t cmd = CMD_SAVE_CAPTURE;
-    uart_write(&cmd, 1);
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return false;
+    }
     
     // Open storage
     Storage* storage = furi_record_open(RECORD_STORAGE);
+    if (!storage) {
+        furi_mutex_release(scanner->mutex);
+        return false;
+    }
+    
     File* file = storage_file_alloc(storage);
+    if (!file) {
+        furi_record_close(RECORD_STORAGE);
+        furi_mutex_release(scanner->mutex);
+        return false;
+    }
     
     bool success = false;
     
@@ -279,7 +446,10 @@ bool wifi_scanner_save_capture(WifiScanner* scanner, const char* filename) {
 bool wifi_scanner_is_scanning(WifiScanner* scanner) {
     if (!scanner) return false;
     
-    furi_mutex_acquire(scanner->mutex, FuriWaitForever);
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return false;
+    }
+    
     bool scanning = scanner->is_scanning;
     furi_mutex_release(scanner->mutex);
     
@@ -289,9 +459,25 @@ bool wifi_scanner_is_scanning(WifiScanner* scanner) {
 bool wifi_scanner_is_capturing(WifiScanner* scanner) {
     if (!scanner) return false;
     
-    furi_mutex_acquire(scanner->mutex, FuriWaitForever);
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return false;
+    }
+    
     bool capturing = scanner->is_capturing;
     furi_mutex_release(scanner->mutex);
     
     return capturing;
+}
+
+bool wifi_scanner_is_esp32_connected(WifiScanner* scanner) {
+    if (!scanner) return false;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return false;
+    }
+    
+    bool connected = scanner->esp32_connected;
+    furi_mutex_release(scanner->mutex);
+    
+    return connected;
 }

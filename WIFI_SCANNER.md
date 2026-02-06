@@ -27,11 +27,19 @@ Core WiFi scanning module that provides:
 
 ### Protocol Extensions
 
-#### New Commands (protocol.h)
-- `CMD_SCAN_NETWORKS (0x07)` - Command to scan for WiFi networks
-- `CMD_START_HANDSHAKE (0x08)` - Command to initiate handshake
-- `CMD_CAPTURE_PACKET (0x09)` - Command to capture packets
-- `CMD_SAVE_CAPTURE (0x0A)` - Command to save captured data
+#### Legacy Binary Commands (protocol.h)
+These are retained for backward compatibility but the app now uses text-based Marauder CLI commands:
+- `CMD_SCAN_NETWORKS (0x07)` - Legacy scan command
+- `CMD_START_HANDSHAKE (0x08)` - Legacy handshake command
+- `CMD_CAPTURE_PACKET (0x09)` - Legacy capture command
+- `CMD_SAVE_CAPTURE (0x0A)` - Legacy save command
+
+#### Marauder Text Commands (Actual Implementation)
+The app now uses Marauder's native CLI commands:
+- `scanap` - Scan for access points
+- `sniffpmkid -c <channel> -d` - Capture handshake with deauth
+- `sniffraw` - Capture raw packets
+- `stopscan` - Stop operations
 
 #### New Data Structures
 ```c
@@ -88,34 +96,61 @@ Packet 1: len=<length>, ts=<timestamp>, ch=<channel>
 ...
 ```
 
-## ESP-32 Integration
+## ESP-32 Marauder Integration
 
-The Flipagotcha app communicates with an ESP-32 via UART to perform actual WiFi operations. The ESP-32 should:
+The Flipagotcha app communicates with an ESP-32 running Marauder firmware via UART (115200 baud, 8N1) to perform WiFi operations.
 
-1. Listen for commands on UART (115200 baud)
-2. Respond to scanning commands by switching WiFi channels
-3. Capture and forward 802.11 packets via UART
-4. Perform deauthentication when handshake is requested
+### Marauder CLI Commands Used
 
-### Expected ESP-32 Behavior
+The app sends these text-based commands to the ESP32:
 
-#### On CMD_SCAN_NETWORKS (0x07):
-- Switch WiFi adapter to monitor mode
-- Scan channels 1-14 for beacon frames
-- Send discovered network information back via UART
+#### Network Scanning
+- **scanap** - Scans for WiFi access points and returns results in format:
+  ```
+  [CH 06] NetworkName (-45dBm) [WPA2]
+  ```
 
-#### On CMD_START_HANDSHAKE (0x08):
-- Receive network index
-- Send deauth packets to trigger handshake
-- Capture EAPOL frames (4-way handshake)
-- Forward captured frames via UART
+#### Packet Capture  
+- **sniffpmkid -c <channel> -d** - Captures PMKID/EAPOL handshake frames
+  - `-c <channel>` - Specifies WiFi channel to monitor
+  - `-d` - Enables deauthentication to force handshake
+  
+- **sniffraw** - Captures all raw 802.11 WiFi frames
 
-#### On CMD_CAPTURE_PACKET (0x09):
-- Start capturing all 802.11 frames
-- Forward captured frames via UART
+#### Control Commands
+- **stopscan** - Stops any active scanning or sniffing operation
 
-#### On CMD_SAVE_CAPTURE (0x0A):
-- Flush any remaining buffered packets
+### Response Parsing
+
+The app parses Marauder's text output to extract:
+- **SSID**: Network name
+- **BSSID**: Access point MAC address (if provided)
+- **RSSI**: Signal strength in dBm
+- **Channel**: WiFi channel number (1-14)
+- **Encryption**: Security type (OPEN, WPA, WPA2, WPA3)
+
+### Connection Detection
+
+On initialization, the app:
+1. Sends a test command to ESP32
+2. Waits for response
+3. Sets connection status (displayed as "ESP32" or "DEMO" in UI)
+
+### Fallback Behavior
+
+If ESP32 is not connected:
+- App operates in DEMO mode with mock data
+- All UI features remain functional
+- Useful for testing without hardware
+
+### Hardware Connection
+
+Connect ESP32 to Flipper Zero GPIO pins:
+- TX (Pin 13) → ESP32 RX
+- RX (Pin 14) → ESP32 TX  
+- GND (Pin 8) → ESP32 GND
+
+See [ESP32_SETUP.md](ESP32_SETUP.md) for complete setup instructions.
 
 ## Building
 
@@ -141,11 +176,11 @@ The wifi_scanner module uses FuriMutex to ensure thread-safe access to shared da
 ### Memory Management
 - Networks: Limited to 16 simultaneous entries (MAX_NETWORKS)
 - Packets: Dynamic allocation starting at 100 packets, expandable
-- Packet size: Maximum 2048 bytes per packet (MAX_PACKET_SIZE)
+- Packet size: Maximum 512 bytes per packet (MAX_PACKET_SIZE) - reduced to save Flipper RAM
 
-### Mock Data
-The current implementation includes mock data for demonstration purposes when an ESP-32 is not connected. This simulates:
+### Demo Mode Fallback
+The implementation includes fallback to mock data when an ESP32 is not connected. This simulates:
 - 3 WiFi networks with varying signal strengths
 - Simulated handshake packet capture
 
-For production use, these should be replaced with actual data from the ESP-32.
+This allows testing the app interface without ESP32 hardware.

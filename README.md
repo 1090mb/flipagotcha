@@ -20,8 +20,23 @@ The face is drawn directly with the Flipper Canvas API, so the binary stays tiny
 2. Run `./fbt COMPACT=1 APPSRC=applications_user/flipagotcha`.  
 3. Flash the resulting `dist/flipagotcha.dfu` with qFlipper or `dfu-util`.
 
-## 📡 Optional ESP‑32 Wi‑Fi bridge
-(see design notes for the UART command set)
+## 📡 ESP32 Marauder WiFi Integration
+
+The Flipagotcha app connects to an ESP32 with **Marauder firmware** via GPIO UART pins to perform real WiFi scanning and packet capture operations.
+
+### Quick Start
+1. Flash ESP32 with [Marauder firmware](https://github.com/justcallmekoko/ESP32Marauder)
+2. Connect ESP32 to Flipper Zero GPIO pins:
+   - Flipper TX (Pin 13) → ESP32 RX
+   - Flipper RX (Pin 14) → ESP32 TX
+   - GND (Pin 8) → ESP32 GND
+3. Launch Flipagotcha app
+4. Look for "ESP32" indicator in top-right corner
+
+For detailed setup instructions, see **[ESP32_SETUP.md](ESP32_SETUP.md)**
+
+### Demo Mode
+No ESP32? The app runs in DEMO mode with simulated data, so you can test the interface without hardware.
 
 ## ✨ WiFi Scanner Features (NEW)
 
