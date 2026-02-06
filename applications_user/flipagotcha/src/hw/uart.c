@@ -23,6 +23,8 @@ static void uart_on_irq_cb(FuriHalSerialHandle* handle, FuriHalSerialRxEvent eve
         uint8_t data;
         while (furi_hal_serial_rx(handle, &data, 1) > 0) {
             if (rx_mutex && furi_mutex_acquire(rx_mutex, 0) == FuriStatusOk) {
+                // Note: Silently drops data when buffer is full to prevent blocking
+                // This is acceptable as the worker thread processes and clears buffer regularly
                 if (rx_buffer_pos < UART_RX_BUFFER_SIZE) {
                     rx_buffer[rx_buffer_pos++] = data;
                 }

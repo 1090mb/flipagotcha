@@ -123,7 +123,13 @@ static void wifi_scanner_parse_scanap_line(WifiScanner* scanner, const char* lin
     // Parse channel
     int channel = 0;
     if (sscanf(ch_start, "[CH %d]", &channel) == 1) {
-        net->channel = (uint8_t)channel;
+        // Validate channel is within WiFi 2.4GHz range (1-14)
+        if (channel >= 1 && channel <= 14) {
+            net->channel = (uint8_t)channel;
+        } else {
+            // Invalid channel, use default
+            net->channel = 6;
+        }
     }
     
     // Find SSID (text between "] " and " (")
@@ -143,7 +149,12 @@ static void wifi_scanner_parse_scanap_line(WifiScanner* scanner, const char* lin
     if (rssi_start) {
         int rssi = 0;
         if (sscanf(rssi_start, "(%ddBm)", &rssi) == 1) {
-            net->rssi = (int8_t)rssi;
+            // Validate RSSI is within reasonable range for WiFi (-100 to 0 dBm)
+            if (rssi >= -100 && rssi <= 0) {
+                net->rssi = (int8_t)rssi;
+            } else {
+                net->rssi = -70; // Default moderate signal
+            }
         }
     }
     
@@ -273,19 +284,30 @@ const WifiNetwork* wifi_scanner_get_network(WifiScanner* scanner, uint8_t index)
 }
 
 bool wifi_scanner_start_handshake(WifiScanner* scanner, uint8_t network_index) {
-    if (!scanner || network_index >= scanner->network_count) return false;
+    if (!scanner) return false;
     
     if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
         return false;
     }
     
+    // Check network_index while holding mutex to avoid race condition
+    if (network_index >= scanner->network_count) {
+        furi_mutex_release(scanner->mutex);
+        return false;
+    }
+    
     bool result = false;
     
-    if (scanner->esp32_connected && network_index < scanner->network_count) {
+    if (scanner->esp32_connected) {
+        // Validate channel is within valid range (1-14) before using it
+        int channel = scanner->networks[network_index].channel;
+        if (channel < 1 || channel > 14) {
+            channel = 6; // Default to channel 6 if invalid
+        }
+        
         // Build sniffpmkid command with channel
         // Format: "sniffpmkid -c <channel> -d\n"
         char cmd[MARAUDER_CMD_BUFFER_SIZE];
-        int channel = scanner->networks[network_index].channel;
         snprintf(cmd, sizeof(cmd), "%s -c %d -d\n", MARAUDER_CMD_SNIFFPMKID, channel);
         result = uart_write_str(cmd);
     }
@@ -421,10 +443,16 @@ bool wifi_scanner_save_capture(WifiScanner* scanner, const char* filename) {
                 char hex_line[80];
                 int offset = 0;
                 for (uint16_t k = 0; k < 16 && (j + k) < dump_len; k++) {
-                    offset += snprintf(hex_line + offset, sizeof(hex_line) - offset,
-                                     "%02X ", pkt->data[j + k]);
+                    // Check if there's enough space for "XX " (3 chars) plus newline and null terminator
+                    if (offset + 4 < (int)sizeof(hex_line)) {
+                        offset += snprintf(hex_line + offset, sizeof(hex_line) - offset,
+                                         "%02X ", pkt->data[j + k]);
+                    }
                 }
-                hex_line[offset++] = '\n';
+                // Safely add newline with bounds check
+                if (offset < (int)sizeof(hex_line) - 1) {
+                    hex_line[offset++] = '\n';
+                }
                 storage_file_write(file, hex_line, offset);
             }
             storage_file_write(file, "\n", 1);
