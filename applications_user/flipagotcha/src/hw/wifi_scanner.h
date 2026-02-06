@@ -43,3 +43,6 @@ bool wifi_scanner_is_scanning(WifiScanner* scanner);
 
 // Check if capture is active
 bool wifi_scanner_is_capturing(WifiScanner* scanner);
+
+// Check if ESP32 is connected
+bool wifi_scanner_is_esp32_connected(WifiScanner* scanner);

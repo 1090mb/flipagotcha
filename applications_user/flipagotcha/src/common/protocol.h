@@ -14,11 +14,23 @@ enum {
     CMD_SAVE_CAPTURE = 0x0A,
 };
 
+// ESP32 Marauder CLI commands
+#define MARAUDER_CMD_SCANAP "scanap\n"
+#define MARAUDER_CMD_STOPSCAN "stopscan\n"
+#define MARAUDER_CMD_SNIFFPMKID "sniffpmkid"
+#define MARAUDER_CMD_SNIFFRAW "sniffraw\n"
+#define MARAUDER_CMD_CHANNEL "channel"
+#define MARAUDER_CMD_HELP "help\n"
+
 #define MAX_SSID_LEN 32
 #define MAX_NETWORKS 16
 #define MAX_PACKET_SIZE 512  // Reduced from 2048 to save memory
 #define HEX_DUMP_MAX_BYTES 64
 #define MOCK_HANDSHAKE_SIZE 128
+#define UART_RX_BUFFER_SIZE 2048
+#define MARAUDER_RESPONSE_TIMEOUT_MS 5000
+#define UART_CONNECTION_TEST_TIMEOUT_MS 100
+#define MARAUDER_CMD_BUFFER_SIZE 64
 
 typedef struct {
     char ssid[MAX_SSID_LEN + 1];
