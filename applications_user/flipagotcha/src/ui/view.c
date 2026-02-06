@@ -55,11 +55,13 @@ static void input_callback(InputEvent* ev, void* ctx) {
                 if (!st->scanning && st->wifi_scanner) {
                     wifi_scanner_start_scan(st->wifi_scanner);
                     st->scanning = true;
+                    // Note: In production, network count would be updated asynchronously as networks are discovered
+                    // For now, mock data is populated synchronously in wifi_scanner_start_scan()
                     st->network_count = wifi_scanner_get_network_count(st->wifi_scanner);
                     
                     // Also start packet capture
                     wifi_scanner_start_capture(st->wifi_scanner);
-                    st->packet_count = wifi_scanner_get_packet_count(st->wifi_scanner);
+                    // Packet count will be updated in the main polling loop
                 } else if (st->scanning && st->wifi_scanner) {
                     // Stop scanning and capture
                     wifi_scanner_stop_scan(st->wifi_scanner);

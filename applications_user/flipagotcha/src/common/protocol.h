@@ -16,7 +16,9 @@ enum {
 
 #define MAX_SSID_LEN 32
 #define MAX_NETWORKS 16
-#define MAX_PACKET_SIZE 2048
+#define MAX_PACKET_SIZE 512  // Reduced from 2048 to save memory
+#define HEX_DUMP_MAX_BYTES 64
+#define MOCK_HANDSHAKE_SIZE 128
 
 typedef struct {
     char ssid[MAX_SSID_LEN + 1];

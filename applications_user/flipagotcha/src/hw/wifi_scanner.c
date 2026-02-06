@@ -119,9 +119,19 @@ uint8_t wifi_scanner_get_network_count(WifiScanner* scanner) {
 }
 
 const WifiNetwork* wifi_scanner_get_network(WifiScanner* scanner, uint8_t index) {
-    if (!scanner || index >= scanner->network_count) return NULL;
+    if (!scanner) return NULL;
     
-    return &scanner->networks[index];
+    furi_mutex_acquire(scanner->mutex, FuriWaitForever);
+    
+    if (index >= scanner->network_count) {
+        furi_mutex_release(scanner->mutex);
+        return NULL;
+    }
+    
+    const WifiNetwork* network = &scanner->networks[index];
+    
+    furi_mutex_release(scanner->mutex);
+    return network;
 }
 
 bool wifi_scanner_start_handshake(WifiScanner* scanner, uint8_t network_index) {
@@ -139,10 +149,10 @@ bool wifi_scanner_start_handshake(WifiScanner* scanner, uint8_t network_index) {
         // Simulate handshake packet capture
         if (scanner->packet_count < scanner->packet_capacity) {
             CapturedPacket* pkt = &scanner->packets[scanner->packet_count];
-            pkt->length = 128; // Simulated handshake packet
+            pkt->length = MOCK_HANDSHAKE_SIZE;
             pkt->timestamp = furi_get_tick();
             pkt->channel = scanner->networks[network_index].channel;
-            memset(pkt->data, 0xAA, 128); // Mock data
+            memset(pkt->data, 0xAA, pkt->length); // Mock data
             scanner->packet_count++;
         }
     }
@@ -238,8 +248,8 @@ bool wifi_scanner_save_capture(WifiScanner* scanner, const char* filename) {
                     i, pkt->length, pkt->timestamp, pkt->channel);
             storage_file_write(file, pkt_header, strlen(pkt_header));
             
-            // Write hex dump of packet data (first 64 bytes)
-            uint16_t dump_len = pkt->length < 64 ? pkt->length : 64;
+            // Write hex dump of packet data (limited to HEX_DUMP_MAX_BYTES)
+            uint16_t dump_len = pkt->length < HEX_DUMP_MAX_BYTES ? pkt->length : HEX_DUMP_MAX_BYTES;
             for (uint16_t j = 0; j < dump_len; j += 16) {
                 char hex_line[80];
                 int offset = 0;
