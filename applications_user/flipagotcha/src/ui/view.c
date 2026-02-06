@@ -1,6 +1,7 @@
 #include "view.h"
 #include "draw.h"
 #include "../hw/uart.h"
+#include "../hw/wifi_scanner.h"
 #include "../common/protocol.h"
 #include <furi.h>
 #include <input/input.h>
@@ -24,6 +25,22 @@ static void draw_callback(Canvas* canvas, void* ctx) {
               20,               // y offset
               st->eyes_closed,
               st->mouth_frown);
+    
+    /* Draw WiFi status */
+    canvas_set_font(canvas, FontSecondary);
+    if (st->scanning) {
+        canvas_draw_str(canvas, 2, 10, "Scanning...");
+        
+        char net_buf[32];
+        snprintf(net_buf, sizeof(net_buf), "Networks: %u", st->network_count);
+        canvas_draw_str(canvas, 2, 20, net_buf);
+    }
+    
+    if (st->packet_count > 0) {
+        char pkt_buf[32];
+        snprintf(pkt_buf, sizeof(pkt_buf), "Packets: %u", st->packet_count);
+        canvas_draw_str(canvas, 2, 60, pkt_buf);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -34,13 +51,37 @@ static void input_callback(InputEvent* ev, void* ctx) {
     switch (ev->key) {
         case InputKeyOk:
             {
+                // Start WiFi scan
+                if (!st->scanning && st->wifi_scanner) {
+                    wifi_scanner_start_scan(st->wifi_scanner);
+                    st->scanning = true;
+                    st->network_count = wifi_scanner_get_network_count(st->wifi_scanner);
+                    
+                    // Also start packet capture
+                    wifi_scanner_start_capture(st->wifi_scanner);
+                    st->packet_count = wifi_scanner_get_packet_count(st->wifi_scanner);
+                } else if (st->scanning && st->wifi_scanner) {
+                    // Stop scanning and capture
+                    wifi_scanner_stop_scan(st->wifi_scanner);
+                    wifi_scanner_stop_capture(st->wifi_scanner);
+                    st->scanning = false;
+                    
+                    // Save captured packets
+                    wifi_scanner_save_capture(st->wifi_scanner, "capture.txt");
+                }
+                
+                // Also send toggle scan command via UART for ESP32
                 uint8_t cmd = CMD_TOGGLE_SCAN;
                 uart_write(&cmd, 1);
-                st->scanning = !st->scanning;
             }
             break;
         case InputKeyLeft:
             st->eyes_closed = true;
+            // Initiate handshake with first network if available
+            if (st->wifi_scanner && st->network_count > 0) {
+                wifi_scanner_start_handshake(st->wifi_scanner, 0);
+                st->packet_count = wifi_scanner_get_packet_count(st->wifi_scanner);
+            }
             break;
         case InputKeyRight:
             st->eyes_closed = false;
@@ -79,6 +120,9 @@ void ui_thread_entry(void* args) {
     UiState* st = malloc(sizeof(UiState));
     memset(st, 0, sizeof(UiState));
 
+    /* Allocate WiFi scanner */
+    st->wifi_scanner = wifi_scanner_alloc();
+
     /* ViewPort creation */
     st->vp = view_port_alloc();
     view_port_draw_callback_set(st->vp, draw_callback, st);
@@ -95,6 +139,13 @@ void ui_thread_entry(void* args) {
     /* Keep thread alive until the user exits */
     while (!furi_thread_is_stopped(furi_thread_get_current())) {
         furi_delay_ms(200);
+        
+        /* Update network and packet counts if scanning */
+        if (st->scanning && st->wifi_scanner) {
+            st->network_count = wifi_scanner_get_network_count(st->wifi_scanner);
+            st->packet_count = wifi_scanner_get_packet_count(st->wifi_scanner);
+            view_port_update(st->vp);
+        }
     }
 
     /* Clean‑up */
@@ -103,5 +154,10 @@ void ui_thread_entry(void* args) {
     gui_remove_view_port(st->gui, st->vp);
     view_port_free(st->vp);
     furi_record_close(st->gui);
+    
+    if (st->wifi_scanner) {
+        wifi_scanner_free(st->wifi_scanner);
+    }
+    
     free(st);
 }

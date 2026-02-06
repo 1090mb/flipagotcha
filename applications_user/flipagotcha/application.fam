@@ -15,6 +15,7 @@ App(
         "src/ui/view.c",
         "src/ui/draw.c",
         "src/hw/uart.c",
+        "src/hw/wifi_scanner.c",
     ],
     fap_icon_assets="assets",
 )
