@@ -12,6 +12,21 @@
 **Why no PNG assets?**  
 The face is drawn directly with the Flipper Canvas API, so the binary stays tiny and you never need to generate or ship image files.
 
+## 📚 Complete Documentation
+
+**[Visit the Wiki](wiki/Home.md)** for comprehensive documentation including:
+- 🚀 [Getting Started Guide](wiki/Getting-Started.md)
+- 📦 [Installation Instructions](wiki/Installation.md)
+- 🔧 [Hardware Setup](wiki/Hardware-Setup.md)
+- 📖 [User Guide](wiki/User-Guide.md)
+- ⚡ [Features](wiki/Features.md)
+- 🏗️ [Architecture](wiki/Architecture.md)
+- 📝 [API Reference](wiki/API-Reference.md)
+- 🐛 [Troubleshooting](wiki/Troubleshooting.md)
+- 🤝 [Contributing Guide](wiki/Contributing.md)
+- ❓ [FAQ](wiki/FAQ.md)
+- ⚖️ [Legal and Safety](wiki/Legal-and-Safety.md)
+
 ## 📂 Repository layout
 (tree omitted for brevity – see the script source for the full list)
 
@@ -62,6 +77,14 @@ For detailed technical documentation, see [WIFI_SCANNER.md](WIFI_SCANNER.md)
 
 ## 🎨 Adding more faces / expressions
 Edit `src/ui/draw.c` – all drawing is done with Canvas primitives.
+
+## ⚠️ Legal Notice
+
+This tool is for **educational purposes and authorized security testing only**. 
+
+**Always ensure you have proper authorization before scanning or capturing packets from any network.** Unauthorized use may be illegal in your jurisdiction.
+
+See **[Legal and Safety](wiki/Legal-and-Safety.md)** for complete information.
 
 ## 📜 License
 MIT – see `LICENSE` file.
