@@ -23,6 +23,28 @@ The face is drawn directly with the Flipper Canvas API, so the binary stays tiny
 ## 📡 Optional ESP‑32 Wi‑Fi bridge
 (see design notes for the UART command set)
 
+## ✨ WiFi Scanner Features (NEW)
+
+The app now includes comprehensive WiFi scanning and packet capture capabilities:
+
+### Features
+- **Network Scanning**: Detect available WiFi networks in range
+- **Handshake Capture**: Initiate WPA/WPA2 handshakes with detected networks  
+- **Packet Capture**: Capture WiFi packets in real-time
+- **Data Storage**: Save captured packets to `/ext/apps_data/flipagotcha/capture.txt`
+
+### Updated Button Controls
+- **OK** – Start/stop WiFi scanning and packet capture
+- **← (Left)** – Initiate handshake with the first detected network
+- **→ (Right)** – Open eyes manually  
+- **↑ / ↓** – Switch between smile and frown
+
+### On-Screen Display
+- Network count and scanning status shown in top-left
+- Packet count shown in bottom-left
+
+For detailed technical documentation, see [WIFI_SCANNER.md](WIFI_SCANNER.md)
+
 ## 🎨 Adding more faces / expressions
 Edit `src/ui/draw.c` – all drawing is done with Canvas primitives.
 
