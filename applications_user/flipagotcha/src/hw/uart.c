@@ -20,9 +20,11 @@ void uart_deinit(void) {
 }
 
 bool uart_write(const uint8_t* data, size_t len) {
+    if (!uart) return false;
     return furi_uart_write(uart, data, len) == len;
 }
 
 bool uart_read(uint8_t* out, size_t len, uint32_t timeout_ms) {
+    if (!uart) return false;
     return furi_uart_read(uart, out, len, timeout_ms) == len;
 }

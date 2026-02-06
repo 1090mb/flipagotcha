@@ -14,4 +14,9 @@ target_link_libraries(flipagotcha PRIVATE
     uart
 )
 
-target_include_directories(flipagotcha PRIVATE src/ui)
+target_include_directories(flipagotcha PRIVATE
+    src
+    src/ui
+    src/hw
+    src/common
+)

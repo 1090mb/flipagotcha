@@ -2,6 +2,7 @@
 #include <gui/view_port.h>
 #include <gui/gui.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef struct {
     ViewPort* vp;
@@ -11,6 +12,7 @@ typedef struct {
     bool scanning;
     uint8_t current_channel;
     FuriTimer* anim_timer;
+    bool running;
 } UiState;
 
 void ui_thread_entry(void* args);
