@@ -2,6 +2,7 @@
 #include <gui/view_port.h>
 #include <gui/gui.h>
 #include <stdbool.h>
+#include "../common/protocol.h"  // For PacketFilterType
 
 // Forward declaration
 typedef struct WifiScanner WifiScanner;
@@ -25,5 +26,10 @@ typedef struct {
     UiMode mode;              // Current UI mode
     uint8_t filter_selection; // Current filter menu selection (0-6)
 } UiState;
+
+// Filter menu configuration
+#define FILTER_MENU_ITEM_COUNT 7
+extern const char* FILTER_MENU_ITEMS[FILTER_MENU_ITEM_COUNT];
+extern const PacketFilterType FILTER_MENU_TYPES[FILTER_MENU_ITEM_COUNT];
 
 void ui_thread_entry(void* args);

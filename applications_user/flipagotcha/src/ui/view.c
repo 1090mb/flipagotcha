@@ -10,6 +10,27 @@
 
 #define ANIM_TICK_MS 100
 
+// Filter menu configuration - extracted to avoid duplication
+const char* FILTER_MENU_ITEMS[FILTER_MENU_ITEM_COUNT] = {
+    "Beacon",
+    "Probe Req",
+    "Probe Resp",
+    "Data",
+    "Deauth",
+    "EAPOL",
+    "Back"
+};
+
+const PacketFilterType FILTER_MENU_TYPES[FILTER_MENU_ITEM_COUNT] = {
+    PACKET_FILTER_BEACON,
+    PACKET_FILTER_PROBE_REQ,
+    PACKET_FILTER_PROBE_RESP,
+    PACKET_FILTER_DATA,
+    PACKET_FILTER_DEAUTH,
+    PACKET_FILTER_EAPOL,
+    0  // Back option
+};
+
 /* ------------------------------------------------------------------ */
 static void draw_main_screen(Canvas* canvas, UiState* st) {
     /* Draw the face */
@@ -77,29 +98,8 @@ static void draw_filter_menu(Canvas* canvas, UiState* st) {
     // Get current filter configuration
     uint8_t filter = wifi_scanner_get_filter(st->wifi_scanner);
     
-    // Menu items
-    const char* items[] = {
-        "Beacon",
-        "Probe Req",
-        "Probe Resp",
-        "Data",
-        "Deauth",
-        "EAPOL",
-        "Back"
-    };
-    
-    PacketFilterType filter_types[] = {
-        PACKET_FILTER_BEACON,
-        PACKET_FILTER_PROBE_REQ,
-        PACKET_FILTER_PROBE_RESP,
-        PACKET_FILTER_DATA,
-        PACKET_FILTER_DEAUTH,
-        PACKET_FILTER_EAPOL,
-        0  // Back option
-    };
-    
     // Draw menu items
-    for (uint8_t i = 0; i < 7; i++) {
+    for (uint8_t i = 0; i < FILTER_MENU_ITEM_COUNT; i++) {
         int y = 20 + (i * 8);
         
         // Highlight selected item
@@ -107,11 +107,11 @@ static void draw_filter_menu(Canvas* canvas, UiState* st) {
             canvas_draw_str(canvas, 2, y, ">");
         }
         
-        canvas_draw_str(canvas, 10, y, items[i]);
+        canvas_draw_str(canvas, 10, y, FILTER_MENU_ITEMS[i]);
         
-        // Show checkbox for filter items
-        if (i < 6) {
-            bool enabled = (filter & filter_types[i]) != 0;
+        // Show checkbox for filter items (not for "Back" option)
+        if (i < FILTER_MENU_ITEM_COUNT - 1) {
+            bool enabled = (filter & FILTER_MENU_TYPES[i]) != 0;
             canvas_draw_str(canvas, 80, y, enabled ? "[X]" : "[ ]");
         }
     }
@@ -149,27 +149,19 @@ static void input_callback(InputEvent* ev, void* ctx) {
                 }
                 break;
             case InputKeyDown:
-                if (st->filter_selection < 6) {
+                if (st->filter_selection < FILTER_MENU_ITEM_COUNT - 1) {
                     st->filter_selection++;
                 }
                 break;
             case InputKeyOk:
                 {
                     // Toggle filter or go back
-                    if (st->filter_selection == 6) {
+                    if (st->filter_selection == FILTER_MENU_ITEM_COUNT - 1) {
                         // Back option selected
                         st->mode = UI_MODE_MAIN;
                     } else {
                         // Toggle the selected filter
-                        PacketFilterType filter_types[] = {
-                            PACKET_FILTER_BEACON,
-                            PACKET_FILTER_PROBE_REQ,
-                            PACKET_FILTER_PROBE_RESP,
-                            PACKET_FILTER_DATA,
-                            PACKET_FILTER_DEAUTH,
-                            PACKET_FILTER_EAPOL
-                        };
-                        wifi_scanner_toggle_filter(st->wifi_scanner, filter_types[st->filter_selection]);
+                        wifi_scanner_toggle_filter(st->wifi_scanner, FILTER_MENU_TYPES[st->filter_selection]);
                     }
                 }
                 break;

@@ -29,7 +29,7 @@ enum {
 #define MOCK_HANDSHAKE_SIZE 128
 #define UART_RX_BUFFER_SIZE 2048
 #define MARAUDER_RESPONSE_TIMEOUT_MS 5000
-#define UART_CONNECTION_TEST_TIMEOUT_MS 100
+#define UART_CONNECTION_TEST_TIMEOUT_MS 200  // Increased from 100ms for more reliable connection detection
 #define MARAUDER_CMD_BUFFER_SIZE 64
 
 typedef struct {

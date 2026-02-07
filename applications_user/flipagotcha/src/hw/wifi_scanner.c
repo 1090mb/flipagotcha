@@ -162,15 +162,21 @@ static void wifi_scanner_parse_scanap_line(WifiScanner* scanner, const char* lin
         }
     }
     
-    // Parse encryption
-    if (strstr(line, "[WPA3]")) {
-        net->encryption = 3;
-    } else if (strstr(line, "[WPA2]")) {
-        net->encryption = 2;
-    } else if (strstr(line, "[WPA]")) {
-        net->encryption = 1;
-    } else if (strstr(line, "[OPEN]")) {
-        net->encryption = 0;
+    // Parse encryption - use single pass to avoid redundant strstr calls
+    const char* enc_pos = strstr(line, "[");
+    if (enc_pos) {
+        enc_pos = strstr(enc_pos + 1, "[");  // Find second bracket (after CH)
+        if (enc_pos) {
+            if (strncmp(enc_pos, "[WPA3]", 6) == 0) {
+                net->encryption = 3;
+            } else if (strncmp(enc_pos, "[WPA2]", 6) == 0) {
+                net->encryption = 2;
+            } else if (strncmp(enc_pos, "[WPA]", 5) == 0) {
+                net->encryption = 1;
+            } else if (strncmp(enc_pos, "[OPEN]", 6) == 0) {
+                net->encryption = 0;
+            }
+        }
     }
     
     // Only add if we got at least an SSID
@@ -318,6 +324,13 @@ bool wifi_scanner_start_handshake(WifiScanner* scanner, uint8_t network_index) {
     
     // Fallback to mock handshake capture
     if (!scanner->esp32_connected || !result) {
+        // Check for packet overflow with notification
+        if (scanner->packet_count >= scanner->packet_capacity) {
+            // Packet capacity reached - cannot add more packets
+            furi_mutex_release(scanner->mutex);
+            return false;
+        }
+        
         if (scanner->packet_count < scanner->packet_capacity) {
             CapturedPacket* pkt = &scanner->packets[scanner->packet_count];
             pkt->length = MOCK_HANDSHAKE_SIZE;
