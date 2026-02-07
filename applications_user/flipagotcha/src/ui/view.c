@@ -11,14 +11,7 @@
 #define ANIM_TICK_MS 100
 
 /* ------------------------------------------------------------------ */
-static void draw_callback(Canvas* canvas, void* ctx) {
-    UiState* st = ctx;
-
-    /* Clear background (optional) */
-    canvas_set_color(canvas, ColorBlack);
-    canvas_draw_box(canvas, 0, 0, 128, 64);
-    canvas_set_color(canvas, ColorWhite);
-
+static void draw_main_screen(Canvas* canvas, UiState* st) {
     /* Draw the face */
     draw_face(canvas,
               40,               // x offset
@@ -75,11 +68,122 @@ static void draw_callback(Canvas* canvas, void* ctx) {
     }
 }
 
+static void draw_filter_menu(Canvas* canvas, UiState* st) {
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str(canvas, 2, 10, "Packet Filters");
+    
+    canvas_set_font(canvas, FontSecondary);
+    
+    // Get current filter configuration
+    uint8_t filter = wifi_scanner_get_filter(st->wifi_scanner);
+    
+    // Menu items
+    const char* items[] = {
+        "Beacon",
+        "Probe Req",
+        "Probe Resp",
+        "Data",
+        "Deauth",
+        "EAPOL",
+        "Back"
+    };
+    
+    PacketFilterType filter_types[] = {
+        PACKET_FILTER_BEACON,
+        PACKET_FILTER_PROBE_REQ,
+        PACKET_FILTER_PROBE_RESP,
+        PACKET_FILTER_DATA,
+        PACKET_FILTER_DEAUTH,
+        PACKET_FILTER_EAPOL,
+        0  // Back option
+    };
+    
+    // Draw menu items
+    for (uint8_t i = 0; i < 7; i++) {
+        int y = 20 + (i * 8);
+        
+        // Highlight selected item
+        if (i == st->filter_selection) {
+            canvas_draw_str(canvas, 2, y, ">");
+        }
+        
+        canvas_draw_str(canvas, 10, y, items[i]);
+        
+        // Show checkbox for filter items
+        if (i < 6) {
+            bool enabled = (filter & filter_types[i]) != 0;
+            canvas_draw_str(canvas, 80, y, enabled ? "[X]" : "[ ]");
+        }
+    }
+    
+    // Help text
+    canvas_draw_str(canvas, 2, 60, "OK:Toggle Up/Dn:Nav");
+}
+
+static void draw_callback(Canvas* canvas, void* ctx) {
+    UiState* st = ctx;
+
+    /* Clear background (optional) */
+    canvas_set_color(canvas, ColorBlack);
+    canvas_draw_box(canvas, 0, 0, 128, 64);
+    canvas_set_color(canvas, ColorWhite);
+
+    if (st->mode == UI_MODE_FILTER) {
+        draw_filter_menu(canvas, st);
+    } else {
+        draw_main_screen(canvas, st);
+    }
+}
+
 /* ------------------------------------------------------------------ */
 static void input_callback(InputEvent* ev, void* ctx) {
     UiState* st = ctx;
     if (ev->type != InputTypeShort) return;
 
+    // Handle filter menu mode
+    if (st->mode == UI_MODE_FILTER) {
+        switch (ev->key) {
+            case InputKeyUp:
+                if (st->filter_selection > 0) {
+                    st->filter_selection--;
+                }
+                break;
+            case InputKeyDown:
+                if (st->filter_selection < 6) {
+                    st->filter_selection++;
+                }
+                break;
+            case InputKeyOk:
+                {
+                    // Toggle filter or go back
+                    if (st->filter_selection == 6) {
+                        // Back option selected
+                        st->mode = UI_MODE_MAIN;
+                    } else {
+                        // Toggle the selected filter
+                        PacketFilterType filter_types[] = {
+                            PACKET_FILTER_BEACON,
+                            PACKET_FILTER_PROBE_REQ,
+                            PACKET_FILTER_PROBE_RESP,
+                            PACKET_FILTER_DATA,
+                            PACKET_FILTER_DEAUTH,
+                            PACKET_FILTER_EAPOL
+                        };
+                        wifi_scanner_toggle_filter(st->wifi_scanner, filter_types[st->filter_selection]);
+                    }
+                }
+                break;
+            case InputKeyBack:
+                st->mode = UI_MODE_MAIN;
+                break;
+            default:
+                break;
+        }
+        view_port_update(st->vp);
+        return;
+    }
+
+    // Handle main screen mode
     switch (ev->key) {
         case InputKeyOk:
             {
@@ -121,7 +225,9 @@ static void input_callback(InputEvent* ev, void* ctx) {
             st->eyes_closed = false;
             break;
         case InputKeyUp:
-            st->mouth_frown = false;   // smile
+            // Open filter menu
+            st->mode = UI_MODE_FILTER;
+            st->filter_selection = 0;
             break;
         case InputKeyDown:
             st->mouth_frown = true;    // frown
@@ -153,6 +259,10 @@ void ui_thread_entry(void* args) {
 
     UiState* st = malloc(sizeof(UiState));
     memset(st, 0, sizeof(UiState));
+    
+    // Initialize UI mode to main screen
+    st->mode = UI_MODE_MAIN;
+    st->filter_selection = 0;
 
     /* Allocate WiFi scanner */
     st->wifi_scanner = wifi_scanner_alloc();

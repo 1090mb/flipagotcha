@@ -50,3 +50,12 @@ bool wifi_scanner_is_esp32_connected(WifiScanner* scanner);
 // Refresh/check the ESP32 connection state (queries UART) and update internal flag
 // Returns the new connection state
 bool wifi_scanner_refresh_connection(WifiScanner* scanner);
+
+// Set packet filter configuration
+void wifi_scanner_set_filter(WifiScanner* scanner, uint8_t filter_flags);
+
+// Get current packet filter configuration
+uint8_t wifi_scanner_get_filter(WifiScanner* scanner);
+
+// Toggle a specific packet filter type
+void wifi_scanner_toggle_filter(WifiScanner* scanner, PacketFilterType filter_type);
