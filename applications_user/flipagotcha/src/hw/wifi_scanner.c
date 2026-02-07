@@ -147,8 +147,8 @@ static void wifi_scanner_parse_scanap_line(WifiScanner* scanner, const char* lin
             // SSID exceeds maximum length, truncate with warning
             ssid_len = MAX_SSID_LEN;
         }
-        // Ensure we don't copy beyond buffer bounds
-        if (ssid_len > 0 && ssid_len <= MAX_SSID_LEN) {
+        // Ensure we have valid data to copy
+        if (ssid_len > 0) {
             strncpy(net->ssid, ssid_start, ssid_len);
             net->ssid[ssid_len] = '\0';
         }
@@ -337,15 +337,13 @@ bool wifi_scanner_start_handshake(WifiScanner* scanner, uint8_t network_index) {
             return false;
         }
         
-        if (scanner->packet_count < scanner->packet_capacity) {
-            CapturedPacket* pkt = &scanner->packets[scanner->packet_count];
-            pkt->length = MOCK_HANDSHAKE_SIZE;
-            pkt->timestamp = furi_get_tick();
-            pkt->channel = scanner->networks[network_index].channel;
-            memset(pkt->data, 0xAA, pkt->length); // Mock data
-            scanner->packet_count++;
-            result = true;
-        }
+        CapturedPacket* pkt = &scanner->packets[scanner->packet_count];
+        pkt->length = MOCK_HANDSHAKE_SIZE;
+        pkt->timestamp = furi_get_tick();
+        pkt->channel = scanner->networks[network_index].channel;
+        memset(pkt->data, 0xAA, pkt->length); // Mock data
+        scanner->packet_count++;
+        result = true;
     }
     
     furi_mutex_release(scanner->mutex);
