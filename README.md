@@ -14,6 +14,13 @@ The face is drawn directly with the Flipper Canvas API, so the binary stays tiny
 
 ## 📚 Complete Documentation
 
+**Quick Links:**
+- 🎯 **[Quick Reference Card](QUICK_REFERENCE.md)** - Essential controls and workflows
+- 🎮 **[UI Guide](UI_GUIDE.md)** - Visual layout and navigation
+- ⚔️ **[Bettercap Features](BETTERCAP_FEATURES.md)** - Attack modes and capabilities
+- 📡 **[ESP32 Setup](ESP32_SETUP.md)** - Hardware configuration
+- 🔧 **[WiFi Scanner Technical](WIFI_SCANNER.md)** - Implementation details
+
 **[Visit the Wiki](wiki/Home.md)** for comprehensive documentation including:
 - 🚀 [Getting Started Guide](wiki/Getting-Started.md)
 - 📦 [Installation Instructions](wiki/Installation.md)
