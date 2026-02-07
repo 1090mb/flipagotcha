@@ -31,6 +31,25 @@ const PacketFilterType FILTER_MENU_TYPES[FILTER_MENU_ITEM_COUNT] = {
     0  // Back option
 };
 
+// Attack menu configuration
+const char* ATTACK_MENU_ITEMS[ATTACK_MENU_ITEM_COUNT] = {
+    "Deauth Attack",
+    "Beacon Spam",
+    "PMKID Capture",
+    "Stop Attack",
+    "Channel Hop",
+    "Back"
+};
+
+// Settings menu configuration
+const char* SETTINGS_MENU_ITEMS[SETTINGS_MENU_ITEM_COUNT] = {
+    "Auto Save: OFF",
+    "Save Interval: 5m",
+    "Audio: OFF",
+    "Channel: Auto",
+    "Back"
+};
+
 /* ------------------------------------------------------------------ */
 static void draw_main_screen(Canvas* canvas, UiState* st) {
     /* Draw the face */
@@ -85,6 +104,27 @@ static void draw_main_screen(Canvas* canvas, UiState* st) {
         canvas_draw_str(canvas, 2, 20, st->network_count_str);
     }
     
+    // Show active attack status
+    if (st->active_attack != ATTACK_TYPE_NONE) {
+        const char* attack_name = "";
+        switch (st->active_attack) {
+            case ATTACK_TYPE_DEAUTH:
+                attack_name = "Deauth";
+                break;
+            case ATTACK_TYPE_BEACON_SPAM:
+                attack_name = "Beacon";
+                break;
+            case ATTACK_TYPE_PMKID:
+                attack_name = "PMKID";
+                break;
+            default:
+                break;
+        }
+        char attack_str[32];
+        snprintf(attack_str, sizeof(attack_str), "ATK: %s", attack_name);
+        canvas_draw_str(canvas, 2, 30, attack_str);
+    }
+    
     if (st->packet_count > 0) {
         // Use cached string if count hasn't changed
         if (st->cached_packet_count != st->packet_count) {
@@ -126,6 +166,85 @@ static void draw_filter_menu(Canvas* canvas, UiState* st) {
     canvas_draw_str(canvas, 2, 60, "OK:Toggle Up/Dn:Nav");
 }
 
+static void draw_attack_menu(Canvas* canvas, UiState* st) {
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str(canvas, 2, 10, "Attack Menu");
+    
+    canvas_set_font(canvas, FontSecondary);
+    
+    // Draw menu items
+    for (uint8_t i = 0; i < ATTACK_MENU_ITEM_COUNT; i++) {
+        int y = 20 + (i * 8);
+        
+        // Highlight selected item
+        if (i == st->attack_selection) {
+            canvas_draw_str(canvas, 2, y, ">");
+        }
+        
+        canvas_draw_str(canvas, 10, y, ATTACK_MENU_ITEMS[i]);
+        
+        // Show indicator for channel hop toggle
+        if (i == 4) { // Channel Hop option
+            canvas_draw_str(canvas, 90, y, st->channel_hopping ? "[X]" : "[ ]");
+        }
+    }
+    
+    // Help text
+    canvas_draw_str(canvas, 2, 60, "OK:Select Up/Dn:Nav");
+}
+
+static void draw_settings_menu(Canvas* canvas, UiState* st) {
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str(canvas, 2, 10, "Settings");
+    
+    canvas_set_font(canvas, FontSecondary);
+    
+    // Draw menu items
+    for (uint8_t i = 0; i < SETTINGS_MENU_ITEM_COUNT; i++) {
+        int y = 20 + (i * 8);
+        
+        // Highlight selected item
+        if (i == st->settings_selection) {
+            canvas_draw_str(canvas, 2, y, ">");
+        }
+        
+        canvas_draw_str(canvas, 10, y, SETTINGS_MENU_ITEMS[i]);
+    }
+    
+    // Help text
+    canvas_draw_str(canvas, 2, 60, "OK:Toggle Bk:Back");
+}
+
+static void draw_stats_view(Canvas* canvas, UiState* st) {
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str(canvas, 2, 10, "Statistics");
+    
+    canvas_set_font(canvas, FontSecondary);
+    
+    // Get session statistics
+    SessionStats stats = wifi_scanner_get_stats(st->wifi_scanner);
+    
+    char buf[64];
+    
+    snprintf(buf, sizeof(buf), "Handshakes: %lu", stats.handshakes_captured);
+    canvas_draw_str(canvas, 2, 20, buf);
+    
+    snprintf(buf, sizeof(buf), "Deauths: %lu", stats.deauth_sent);
+    canvas_draw_str(canvas, 2, 28, buf);
+    
+    snprintf(buf, sizeof(buf), "Beacons: %lu", stats.beacons_sent);
+    canvas_draw_str(canvas, 2, 36, buf);
+    
+    snprintf(buf, sizeof(buf), "PMKIDs: %lu", stats.pmkids_captured);
+    canvas_draw_str(canvas, 2, 44, buf);
+    
+    snprintf(buf, sizeof(buf), "Packets: %lu", stats.total_packets);
+    canvas_draw_str(canvas, 2, 52, buf);
+    
+    // Help text
+    canvas_draw_str(canvas, 2, 60, "Back:Return");
+}
+
 static void draw_callback(Canvas* canvas, void* ctx) {
     UiState* st = ctx;
 
@@ -134,10 +253,23 @@ static void draw_callback(Canvas* canvas, void* ctx) {
     canvas_draw_box(canvas, 0, 0, 128, 64);
     canvas_set_color(canvas, ColorWhite);
 
-    if (st->mode == UI_MODE_FILTER) {
-        draw_filter_menu(canvas, st);
-    } else {
-        draw_main_screen(canvas, st);
+    switch (st->mode) {
+        case UI_MODE_FILTER:
+            draw_filter_menu(canvas, st);
+            break;
+        case UI_MODE_ATTACK:
+            draw_attack_menu(canvas, st);
+            break;
+        case UI_MODE_SETTINGS:
+            draw_settings_menu(canvas, st);
+            break;
+        case UI_MODE_STATS:
+            draw_stats_view(canvas, st);
+            break;
+        case UI_MODE_MAIN:
+        default:
+            draw_main_screen(canvas, st);
+            break;
     }
 }
 
@@ -181,6 +313,112 @@ static void input_callback(InputEvent* ev, void* ctx) {
         return;
     }
 
+    // Handle attack menu mode
+    if (st->mode == UI_MODE_ATTACK) {
+        switch (ev->key) {
+            case InputKeyUp:
+                if (st->attack_selection > 0) {
+                    st->attack_selection--;
+                }
+                break;
+            case InputKeyDown:
+                if (st->attack_selection < ATTACK_MENU_ITEM_COUNT - 1) {
+                    st->attack_selection++;
+                }
+                break;
+            case InputKeyOk:
+                {
+                    switch (st->attack_selection) {
+                        case 0: // Deauth Attack
+                            if (st->network_count > 0) {
+                                wifi_scanner_start_deauth(st->wifi_scanner, 0);
+                                st->active_attack = ATTACK_TYPE_DEAUTH;
+                            }
+                            break;
+                        case 1: // Beacon Spam
+                            wifi_scanner_start_beacon_spam(st->wifi_scanner);
+                            st->active_attack = ATTACK_TYPE_BEACON_SPAM;
+                            break;
+                        case 2: // PMKID Capture
+                            wifi_scanner_start_pmkid_capture(st->wifi_scanner);
+                            st->active_attack = ATTACK_TYPE_PMKID;
+                            break;
+                        case 3: // Stop Attack
+                            if (st->active_attack == ATTACK_TYPE_DEAUTH) {
+                                wifi_scanner_stop_deauth(st->wifi_scanner);
+                            } else if (st->active_attack == ATTACK_TYPE_BEACON_SPAM) {
+                                wifi_scanner_stop_beacon_spam(st->wifi_scanner);
+                            } else if (st->active_attack == ATTACK_TYPE_PMKID) {
+                                wifi_scanner_stop_pmkid_capture(st->wifi_scanner);
+                            }
+                            st->active_attack = ATTACK_TYPE_NONE;
+                            break;
+                        case 4: // Channel Hop
+                            st->channel_hopping = !st->channel_hopping;
+                            wifi_scanner_set_channel_hopping(st->wifi_scanner, st->channel_hopping);
+                            break;
+                        case 5: // Back
+                            st->mode = UI_MODE_MAIN;
+                            break;
+                    }
+                }
+                break;
+            case InputKeyBack:
+                st->mode = UI_MODE_MAIN;
+                break;
+            default:
+                break;
+        }
+        view_port_update(st->vp);
+        return;
+    }
+
+    // Handle settings menu mode
+    if (st->mode == UI_MODE_SETTINGS) {
+        switch (ev->key) {
+            case InputKeyUp:
+                if (st->settings_selection > 0) {
+                    st->settings_selection--;
+                }
+                break;
+            case InputKeyDown:
+                if (st->settings_selection < SETTINGS_MENU_ITEM_COUNT - 1) {
+                    st->settings_selection++;
+                }
+                break;
+            case InputKeyOk:
+                {
+                    if (st->settings_selection == SETTINGS_MENU_ITEM_COUNT - 1) {
+                        // Back option
+                        st->mode = UI_MODE_MAIN;
+                    }
+                    // TODO: Implement settings toggles
+                }
+                break;
+            case InputKeyBack:
+                st->mode = UI_MODE_MAIN;
+                break;
+            default:
+                break;
+        }
+        view_port_update(st->vp);
+        return;
+    }
+
+    // Handle stats view mode
+    if (st->mode == UI_MODE_STATS) {
+        switch (ev->key) {
+            case InputKeyBack:
+            case InputKeyOk:
+                st->mode = UI_MODE_MAIN;
+                break;
+            default:
+                break;
+        }
+        view_port_update(st->vp);
+        return;
+    }
+
     // Handle main screen mode
     switch (ev->key) {
         case InputKeyOk:
@@ -212,15 +450,13 @@ static void input_callback(InputEvent* ev, void* ctx) {
             }
             break;
         case InputKeyLeft:
-            st->eyes_closed = true;
-            // Initiate handshake with first network if available
-            if (st->wifi_scanner && st->network_count > 0) {
-                wifi_scanner_start_handshake(st->wifi_scanner, 0);
-                st->packet_count = wifi_scanner_get_packet_count(st->wifi_scanner);
-            }
+            // Open attack menu
+            st->mode = UI_MODE_ATTACK;
+            st->attack_selection = 0;
             break;
         case InputKeyRight:
-            st->eyes_closed = false;
+            // Open statistics view
+            st->mode = UI_MODE_STATS;
             break;
         case InputKeyUp:
             // Open filter menu
@@ -228,7 +464,9 @@ static void input_callback(InputEvent* ev, void* ctx) {
             st->filter_selection = 0;
             break;
         case InputKeyDown:
-            st->mouth_frown = true;    // frown
+            // Open settings menu
+            st->mode = UI_MODE_SETTINGS;
+            st->settings_selection = 0;
             break;
         case InputKeyBack:
             furi_thread_exit(furi_thread_get_current());
@@ -261,6 +499,10 @@ void ui_thread_entry(void* args) {
     // Initialize UI mode to main screen
     st->mode = UI_MODE_MAIN;
     st->filter_selection = 0;
+    st->attack_selection = 0;
+    st->settings_selection = 0;
+    st->active_attack = ATTACK_TYPE_NONE;
+    st->channel_hopping = false;
 
     /* Allocate WiFi scanner */
     st->wifi_scanner = wifi_scanner_alloc();
@@ -296,6 +538,11 @@ void ui_thread_entry(void* args) {
             st->network_count = wifi_scanner_get_network_count(st->wifi_scanner);
             st->packet_count = wifi_scanner_get_packet_count(st->wifi_scanner);
             view_port_update(st->vp);
+        }
+        
+        /* Sync active attack state */
+        if (st->wifi_scanner) {
+            st->active_attack = wifi_scanner_get_active_attack(st->wifi_scanner);
         }
     }
 

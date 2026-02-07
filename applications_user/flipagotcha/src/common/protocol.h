@@ -12,6 +12,10 @@ enum {
     CMD_START_HANDSHAKE = 0x08,
     CMD_CAPTURE_PACKET = 0x09,
     CMD_SAVE_CAPTURE = 0x0A,
+    CMD_DEAUTH       = 0x0B,  // Deauth attack
+    CMD_BEACON_SPAM  = 0x0C,  // Beacon spam/injection
+    CMD_PMKID_CAPTURE = 0x0D, // PMKID capture mode
+    CMD_CHANNEL_HOP  = 0x0E,  // Enable channel hopping
 };
 
 // ESP32 Marauder CLI commands
@@ -21,6 +25,10 @@ enum {
 #define MARAUDER_CMD_SNIFFRAW "sniffraw\n"
 #define MARAUDER_CMD_CHANNEL "channel"
 #define MARAUDER_CMD_HELP "help\n"
+#define MARAUDER_CMD_ATTACK_DEAUTH "attack -t deauth"
+#define MARAUDER_CMD_ATTACK_BEACON "attack -t beacon"
+#define MARAUDER_CMD_LIST "list"
+#define MARAUDER_CMD_SELECT "select"
 
 #define MAX_SSID_LEN 32
 #define MAX_NETWORKS 16
@@ -62,3 +70,21 @@ typedef enum {
 typedef struct {
     uint8_t filter_flags;  // Bitmap of PacketFilterType flags
 } PacketFilterConfig;
+
+// Attack types for menu system
+typedef enum {
+    ATTACK_TYPE_NONE = 0,
+    ATTACK_TYPE_DEAUTH,       // Deauthentication attack
+    ATTACK_TYPE_BEACON_SPAM,  // Beacon spam attack
+    ATTACK_TYPE_PMKID,        // PMKID capture
+} AttackType;
+
+// Session statistics
+typedef struct {
+    uint32_t handshakes_captured;
+    uint32_t deauth_sent;
+    uint32_t beacons_sent;
+    uint32_t pmkids_captured;
+    uint32_t session_start_time;
+    uint32_t total_packets;
+} SessionStats;
