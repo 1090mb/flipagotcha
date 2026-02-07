@@ -143,9 +143,15 @@ static void wifi_scanner_parse_scanap_line(WifiScanner* scanner, const char* lin
     if (ssid_start && ssid_end && ssid_end > ssid_start + 2) {
         ssid_start += 2;
         size_t ssid_len = ssid_end - ssid_start;
-        if (ssid_len > MAX_SSID_LEN) ssid_len = MAX_SSID_LEN;
-        strncpy(net->ssid, ssid_start, ssid_len);
-        net->ssid[ssid_len] = '\0';
+        if (ssid_len > MAX_SSID_LEN) {
+            // SSID exceeds maximum length, truncate with warning
+            ssid_len = MAX_SSID_LEN;
+        }
+        // Ensure we have valid data to copy
+        if (ssid_len > 0) {
+            strncpy(net->ssid, ssid_start, ssid_len);
+            net->ssid[ssid_len] = '\0';
+        }
     }
     
     // Parse RSSI
@@ -162,15 +168,21 @@ static void wifi_scanner_parse_scanap_line(WifiScanner* scanner, const char* lin
         }
     }
     
-    // Parse encryption
-    if (strstr(line, "[WPA3]")) {
-        net->encryption = 3;
-    } else if (strstr(line, "[WPA2]")) {
-        net->encryption = 2;
-    } else if (strstr(line, "[WPA]")) {
-        net->encryption = 1;
-    } else if (strstr(line, "[OPEN]")) {
-        net->encryption = 0;
+    // Parse encryption - use single pass to avoid redundant strstr calls
+    const char* enc_pos = strstr(line, "[");
+    if (enc_pos) {
+        enc_pos = strstr(enc_pos + 1, "[");  // Find second bracket (after CH)
+        if (enc_pos) {
+            if (strncmp(enc_pos, "[WPA3]", 6) == 0) {
+                net->encryption = 3;
+            } else if (strncmp(enc_pos, "[WPA2]", 6) == 0) {
+                net->encryption = 2;
+            } else if (strncmp(enc_pos, "[WPA]", 5) == 0) {
+                net->encryption = 1;
+            } else if (strncmp(enc_pos, "[OPEN]", 6) == 0) {
+                net->encryption = 0;
+            }
+        }
     }
     
     // Only add if we got at least an SSID
@@ -318,15 +330,20 @@ bool wifi_scanner_start_handshake(WifiScanner* scanner, uint8_t network_index) {
     
     // Fallback to mock handshake capture
     if (!scanner->esp32_connected || !result) {
-        if (scanner->packet_count < scanner->packet_capacity) {
-            CapturedPacket* pkt = &scanner->packets[scanner->packet_count];
-            pkt->length = MOCK_HANDSHAKE_SIZE;
-            pkt->timestamp = furi_get_tick();
-            pkt->channel = scanner->networks[network_index].channel;
-            memset(pkt->data, 0xAA, pkt->length); // Mock data
-            scanner->packet_count++;
-            result = true;
+        // Check for packet overflow with notification
+        if (scanner->packet_count >= scanner->packet_capacity) {
+            // Packet capacity reached - cannot add more packets
+            furi_mutex_release(scanner->mutex);
+            return false;
         }
+        
+        CapturedPacket* pkt = &scanner->packets[scanner->packet_count];
+        pkt->length = MOCK_HANDSHAKE_SIZE;
+        pkt->timestamp = furi_get_tick();
+        pkt->channel = scanner->networks[network_index].channel;
+        memset(pkt->data, 0xAA, pkt->length); // Mock data
+        scanner->packet_count++;
+        result = true;
     }
     
     furi_mutex_release(scanner->mutex);

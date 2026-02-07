@@ -14,13 +14,10 @@ int32_t flipagotcha_main(void* p) {
         "FlipUI", 4096, ui_thread_entry, NULL);
     furi_thread_start(ui_thr);
 
-    /* Main loop – wait for UI thread to finish */
-    while (!furi_thread_is_stopped(ui_thr)) {
-        furi_delay_ms(200);
-    }
+    /* Block until UI thread finishes */
+    furi_thread_join(ui_thr);
 
     /* Clean‑up */
-    furi_thread_join(ui_thr);
     furi_thread_free(ui_thr);
     uart_deinit();
 

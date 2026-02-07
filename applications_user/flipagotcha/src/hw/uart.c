@@ -10,9 +10,10 @@ static void* rx_callback_context = NULL;
 static FuriThread* rx_thread = NULL;
 static volatile bool rx_thread_running = false;
 
-// UART receive buffer
+// UART receive buffer (circular buffer implementation)
 static uint8_t rx_buffer[UART_RX_BUFFER_SIZE];
-static size_t rx_buffer_pos = 0;
+static size_t rx_buffer_head = 0;  // Write position
+static size_t rx_buffer_tail = 0;  // Read position
 static FuriMutex* rx_mutex = NULL;
 
 // UART RX interrupt callback
@@ -23,11 +24,16 @@ static void uart_on_irq_cb(FuriHalSerialHandle* handle, FuriHalSerialRxEvent eve
         uint8_t data;
         while (furi_hal_serial_rx(handle, &data, 1) > 0) {
             if (rx_mutex && furi_mutex_acquire(rx_mutex, 0) == FuriStatusOk) {
-                // Note: Silently drops data when buffer is full to prevent blocking
-                // This is acceptable as the worker thread processes and clears buffer regularly
-                if (rx_buffer_pos < UART_RX_BUFFER_SIZE) {
-                    rx_buffer[rx_buffer_pos++] = data;
+                // Calculate next head position
+                size_t next_head = (rx_buffer_head + 1) % UART_RX_BUFFER_SIZE;
+                
+                // Only write if buffer is not full (prevent overwriting unread data)
+                if (next_head != rx_buffer_tail) {
+                    rx_buffer[rx_buffer_head] = data;
+                    rx_buffer_head = next_head;
                 }
+                // Silently drops data when buffer is full to prevent blocking
+                
                 furi_mutex_release(rx_mutex);
             }
         }
@@ -39,19 +45,35 @@ static int32_t uart_rx_worker(void* context) {
     (void)context;
     
     while (rx_thread_running) {
-        size_t available = 0;
-        
         if (rx_mutex && furi_mutex_acquire(rx_mutex, FuriWaitForever) == FuriStatusOk) {
-            available = rx_buffer_pos;
+            // Calculate available data in circular buffer
+            size_t available;
+            if (rx_buffer_head >= rx_buffer_tail) {
+                available = rx_buffer_head - rx_buffer_tail;
+            } else {
+                available = UART_RX_BUFFER_SIZE - rx_buffer_tail + rx_buffer_head;
+            }
             
             // Process received data if callback is set
             if (available > 0 && rx_callback) {
-                rx_callback(rx_buffer, available, rx_callback_context);
-                // Clear buffer after processing
-                rx_buffer_pos = 0;
+                // Create temporary buffer to pass contiguous data to callback
+                uint8_t temp_buffer[UART_RX_BUFFER_SIZE];
+                size_t bytes_to_copy = available;
+                
+                // Copy data from circular buffer to temp buffer
+                for (size_t i = 0; i < bytes_to_copy; i++) {
+                    temp_buffer[i] = rx_buffer[rx_buffer_tail];
+                    rx_buffer_tail = (rx_buffer_tail + 1) % UART_RX_BUFFER_SIZE;
+                }
+                
+                // Release mutex before calling callback to avoid blocking IRQ
+                furi_mutex_release(rx_mutex);
+                
+                // Call callback with contiguous data
+                rx_callback(temp_buffer, bytes_to_copy, rx_callback_context);
+            } else {
+                furi_mutex_release(rx_mutex);
             }
-            
-            furi_mutex_release(rx_mutex);
         }
         
         furi_delay_ms(100);
@@ -106,7 +128,8 @@ void uart_deinit(void) {
     
     rx_callback = NULL;
     rx_callback_context = NULL;
-    rx_buffer_pos = 0;
+    rx_buffer_head = 0;
+    rx_buffer_tail = 0;
 }
 
 bool uart_write(const uint8_t* data, size_t len) {
@@ -132,13 +155,10 @@ bool uart_read(uint8_t* out, size_t len, uint32_t timeout_ms) {
         }
         
         if (rx_mutex && furi_mutex_acquire(rx_mutex, 10) == FuriStatusOk) {
-            while (rx_buffer_pos > 0 && read_count < len) {
-                out[read_count++] = rx_buffer[0];
-                // Shift buffer
-                rx_buffer_pos--;
-                if (rx_buffer_pos > 0) {
-                    memmove(rx_buffer, rx_buffer + 1, rx_buffer_pos);
-                }
+            // Read from circular buffer
+            while (rx_buffer_tail != rx_buffer_head && read_count < len) {
+                out[read_count++] = rx_buffer[rx_buffer_tail];
+                rx_buffer_tail = (rx_buffer_tail + 1) % UART_RX_BUFFER_SIZE;
             }
             furi_mutex_release(rx_mutex);
         }
@@ -161,7 +181,8 @@ bool uart_is_connected(void) {
     
     // Clear any stale data in buffer first
     if (rx_mutex && furi_mutex_acquire(rx_mutex, FuriWaitForever) == FuriStatusOk) {
-        rx_buffer_pos = 0;
+        rx_buffer_head = 0;
+        rx_buffer_tail = 0;
         furi_mutex_release(rx_mutex);
     }
     
@@ -170,15 +191,16 @@ bool uart_is_connected(void) {
     const char* test_cmd = MARAUDER_CMD_HELP;
     uart_write_str(test_cmd);
     
-    // Wait for response
+    // Wait for response (increased timeout for more reliable connection detection)
     furi_delay_ms(UART_CONNECTION_TEST_TIMEOUT_MS);
     
     // Check if we got any response
     bool has_data = false;
     if (rx_mutex && furi_mutex_acquire(rx_mutex, FuriWaitForever) == FuriStatusOk) {
-        has_data = (rx_buffer_pos > 0);
+        has_data = (rx_buffer_head != rx_buffer_tail);
         // Clear buffer after test
-        rx_buffer_pos = 0;
+        rx_buffer_head = 0;
+        rx_buffer_tail = 0;
         furi_mutex_release(rx_mutex);
     }
     
