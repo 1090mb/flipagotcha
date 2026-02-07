@@ -15,6 +15,7 @@ struct WifiScanner {
     bool is_scanning;
     bool is_capturing;
     bool esp32_connected;
+    PacketFilterConfig filter_config;  // Packet filter configuration
     FuriMutex* mutex;
     FuriString* rx_buffer;  // Buffer for incoming UART data
 };
@@ -50,6 +51,9 @@ WifiScanner* wifi_scanner_alloc(void) {
         free(scanner);
         return NULL;
     }
+    
+    // Initialize packet filter to capture all packets by default
+    scanner->filter_config.filter_flags = PACKET_FILTER_ALL;
     
     // Set up UART callback
     uart_set_rx_callback(wifi_scanner_uart_rx_callback, scanner);
@@ -337,10 +341,25 @@ bool wifi_scanner_start_capture(WifiScanner* scanner) {
     }
     
     bool result = false;
+    uint8_t filter_flags = scanner->filter_config.filter_flags;
     
-    // Send Marauder sniffraw command
+    // Build capture command based on filter configuration
+    // Different ESP32 Marauder commands capture different packet types:
+    // - sniffraw: captures all raw packets (when filter is ALL or multiple types)
+    // - sniffpmkid: captures EAPOL handshake packets specifically
+    // - sniffbeacon: captures beacon frames only (if supported)
+    
     if (scanner->esp32_connected) {
-        result = uart_write_str(MARAUDER_CMD_SNIFFRAW);
+        // If only EAPOL filter is enabled, use sniffpmkid command
+        if (filter_flags == PACKET_FILTER_EAPOL) {
+            // Use sniffpmkid without channel specification (monitor all channels)
+            result = uart_write_str("sniffpmkid\n");
+        }
+        // For any other filter combination, use sniffraw
+        // Note: The actual filtering will happen when parsing received packets
+        else {
+            result = uart_write_str(MARAUDER_CMD_SNIFFRAW);
+        }
     }
     
     if (result || !scanner->esp32_connected) {
@@ -524,4 +543,45 @@ bool wifi_scanner_refresh_connection(WifiScanner* scanner) {
 
     furi_mutex_release(scanner->mutex);
     return connected;
+}
+
+// Set packet filter configuration
+void wifi_scanner_set_filter(WifiScanner* scanner, uint8_t filter_flags) {
+    if (!scanner) return;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return;
+    }
+    
+    scanner->filter_config.filter_flags = filter_flags;
+    
+    furi_mutex_release(scanner->mutex);
+}
+
+// Get current packet filter configuration
+uint8_t wifi_scanner_get_filter(WifiScanner* scanner) {
+    if (!scanner) return PACKET_FILTER_ALL;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return PACKET_FILTER_ALL;
+    }
+    
+    uint8_t filter_flags = scanner->filter_config.filter_flags;
+    
+    furi_mutex_release(scanner->mutex);
+    return filter_flags;
+}
+
+// Toggle a specific packet filter type
+void wifi_scanner_toggle_filter(WifiScanner* scanner, PacketFilterType filter_type) {
+    if (!scanner) return;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return;
+    }
+    
+    // Toggle the specific filter bit
+    scanner->filter_config.filter_flags ^= filter_type;
+    
+    furi_mutex_release(scanner->mutex);
 }
