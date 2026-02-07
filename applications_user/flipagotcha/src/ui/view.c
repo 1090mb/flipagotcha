@@ -77,15 +77,21 @@ static void draw_main_screen(Canvas* canvas, UiState* st) {
     if (st->scanning) {
         canvas_draw_str(canvas, 2, 10, "Scanning...");
         
-        char net_buf[32];
-        snprintf(net_buf, sizeof(net_buf), "Networks: %u", st->network_count);
-        canvas_draw_str(canvas, 2, 20, net_buf);
+        // Use cached string if count hasn't changed
+        if (st->cached_network_count != st->network_count) {
+            snprintf(st->network_count_str, sizeof(st->network_count_str), "Networks: %u", st->network_count);
+            st->cached_network_count = st->network_count;
+        }
+        canvas_draw_str(canvas, 2, 20, st->network_count_str);
     }
     
     if (st->packet_count > 0) {
-        char pkt_buf[32];
-        snprintf(pkt_buf, sizeof(pkt_buf), "Packets: %u", st->packet_count);
-        canvas_draw_str(canvas, 2, 60, pkt_buf);
+        // Use cached string if count hasn't changed
+        if (st->cached_packet_count != st->packet_count) {
+            snprintf(st->packet_count_str, sizeof(st->packet_count_str), "Packets: %u", st->packet_count);
+            st->cached_packet_count = st->packet_count;
+        }
+        canvas_draw_str(canvas, 2, 60, st->packet_count_str);
     }
 }
 

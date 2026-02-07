@@ -25,6 +25,11 @@ typedef struct {
     uint16_t packet_count;
     UiMode mode;              // Current UI mode
     uint8_t filter_selection; // Current filter menu selection (0-6)
+    // Cached formatted strings to avoid repeated snprintf in draw callback
+    char network_count_str[32];
+    char packet_count_str[32];
+    uint8_t cached_network_count;
+    uint16_t cached_packet_count;
 } UiState;
 
 // Filter menu configuration

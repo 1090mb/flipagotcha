@@ -143,9 +143,15 @@ static void wifi_scanner_parse_scanap_line(WifiScanner* scanner, const char* lin
     if (ssid_start && ssid_end && ssid_end > ssid_start + 2) {
         ssid_start += 2;
         size_t ssid_len = ssid_end - ssid_start;
-        if (ssid_len > MAX_SSID_LEN) ssid_len = MAX_SSID_LEN;
-        strncpy(net->ssid, ssid_start, ssid_len);
-        net->ssid[ssid_len] = '\0';
+        if (ssid_len > MAX_SSID_LEN) {
+            // SSID exceeds maximum length, truncate with warning
+            ssid_len = MAX_SSID_LEN;
+        }
+        // Ensure we don't copy beyond buffer bounds
+        if (ssid_len > 0 && ssid_len <= MAX_SSID_LEN) {
+            strncpy(net->ssid, ssid_start, ssid_len);
+            net->ssid[ssid_len] = '\0';
+        }
     }
     
     // Parse RSSI
