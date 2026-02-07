@@ -15,6 +15,7 @@ struct WifiScanner {
     bool is_scanning;
     bool is_capturing;
     bool esp32_connected;
+    PacketFilterConfig filter_config;  // Packet filter configuration
     FuriMutex* mutex;
     FuriString* rx_buffer;  // Buffer for incoming UART data
 };
@@ -50,6 +51,9 @@ WifiScanner* wifi_scanner_alloc(void) {
         free(scanner);
         return NULL;
     }
+    
+    // Initialize packet filter to capture all packets by default
+    scanner->filter_config.filter_flags = PACKET_FILTER_ALL;
     
     // Set up UART callback
     uart_set_rx_callback(wifi_scanner_uart_rx_callback, scanner);
@@ -139,9 +143,15 @@ static void wifi_scanner_parse_scanap_line(WifiScanner* scanner, const char* lin
     if (ssid_start && ssid_end && ssid_end > ssid_start + 2) {
         ssid_start += 2;
         size_t ssid_len = ssid_end - ssid_start;
-        if (ssid_len > MAX_SSID_LEN) ssid_len = MAX_SSID_LEN;
-        strncpy(net->ssid, ssid_start, ssid_len);
-        net->ssid[ssid_len] = '\0';
+        if (ssid_len > MAX_SSID_LEN) {
+            // SSID exceeds maximum length, truncate with warning
+            ssid_len = MAX_SSID_LEN;
+        }
+        // Ensure we have valid data to copy
+        if (ssid_len > 0) {
+            strncpy(net->ssid, ssid_start, ssid_len);
+            net->ssid[ssid_len] = '\0';
+        }
     }
     
     // Parse RSSI
@@ -158,15 +168,21 @@ static void wifi_scanner_parse_scanap_line(WifiScanner* scanner, const char* lin
         }
     }
     
-    // Parse encryption
-    if (strstr(line, "[WPA3]")) {
-        net->encryption = 3;
-    } else if (strstr(line, "[WPA2]")) {
-        net->encryption = 2;
-    } else if (strstr(line, "[WPA]")) {
-        net->encryption = 1;
-    } else if (strstr(line, "[OPEN]")) {
-        net->encryption = 0;
+    // Parse encryption - use single pass to avoid redundant strstr calls
+    const char* enc_pos = strstr(line, "[");
+    if (enc_pos) {
+        enc_pos = strstr(enc_pos + 1, "[");  // Find second bracket (after CH)
+        if (enc_pos) {
+            if (strncmp(enc_pos, "[WPA3]", 6) == 0) {
+                net->encryption = 3;
+            } else if (strncmp(enc_pos, "[WPA2]", 6) == 0) {
+                net->encryption = 2;
+            } else if (strncmp(enc_pos, "[WPA]", 5) == 0) {
+                net->encryption = 1;
+            } else if (strncmp(enc_pos, "[OPEN]", 6) == 0) {
+                net->encryption = 0;
+            }
+        }
     }
     
     // Only add if we got at least an SSID
@@ -314,15 +330,20 @@ bool wifi_scanner_start_handshake(WifiScanner* scanner, uint8_t network_index) {
     
     // Fallback to mock handshake capture
     if (!scanner->esp32_connected || !result) {
-        if (scanner->packet_count < scanner->packet_capacity) {
-            CapturedPacket* pkt = &scanner->packets[scanner->packet_count];
-            pkt->length = MOCK_HANDSHAKE_SIZE;
-            pkt->timestamp = furi_get_tick();
-            pkt->channel = scanner->networks[network_index].channel;
-            memset(pkt->data, 0xAA, pkt->length); // Mock data
-            scanner->packet_count++;
-            result = true;
+        // Check for packet overflow with notification
+        if (scanner->packet_count >= scanner->packet_capacity) {
+            // Packet capacity reached - cannot add more packets
+            furi_mutex_release(scanner->mutex);
+            return false;
         }
+        
+        CapturedPacket* pkt = &scanner->packets[scanner->packet_count];
+        pkt->length = MOCK_HANDSHAKE_SIZE;
+        pkt->timestamp = furi_get_tick();
+        pkt->channel = scanner->networks[network_index].channel;
+        memset(pkt->data, 0xAA, pkt->length); // Mock data
+        scanner->packet_count++;
+        result = true;
     }
     
     furi_mutex_release(scanner->mutex);
@@ -337,10 +358,25 @@ bool wifi_scanner_start_capture(WifiScanner* scanner) {
     }
     
     bool result = false;
+    uint8_t filter_flags = scanner->filter_config.filter_flags;
     
-    // Send Marauder sniffraw command
+    // Build capture command based on filter configuration
+    // Different ESP32 Marauder commands capture different packet types:
+    // - sniffraw: captures all raw packets (when filter is ALL or multiple types)
+    // - sniffpmkid: captures EAPOL handshake packets specifically
+    // - sniffbeacon: captures beacon frames only (if supported)
+    
     if (scanner->esp32_connected) {
-        result = uart_write_str(MARAUDER_CMD_SNIFFRAW);
+        // If only EAPOL filter is enabled, use sniffpmkid command
+        if (filter_flags == PACKET_FILTER_EAPOL) {
+            // Use sniffpmkid without channel specification (monitor all channels)
+            result = uart_write_str("sniffpmkid\n");
+        }
+        // For any other filter combination, use sniffraw
+        // Note: The actual filtering will happen when parsing received packets
+        else {
+            result = uart_write_str(MARAUDER_CMD_SNIFFRAW);
+        }
     }
     
     if (result || !scanner->esp32_connected) {
@@ -524,4 +560,45 @@ bool wifi_scanner_refresh_connection(WifiScanner* scanner) {
 
     furi_mutex_release(scanner->mutex);
     return connected;
+}
+
+// Set packet filter configuration
+void wifi_scanner_set_filter(WifiScanner* scanner, uint8_t filter_flags) {
+    if (!scanner) return;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return;
+    }
+    
+    scanner->filter_config.filter_flags = filter_flags;
+    
+    furi_mutex_release(scanner->mutex);
+}
+
+// Get current packet filter configuration
+uint8_t wifi_scanner_get_filter(WifiScanner* scanner) {
+    if (!scanner) return PACKET_FILTER_ALL;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return PACKET_FILTER_ALL;
+    }
+    
+    uint8_t filter_flags = scanner->filter_config.filter_flags;
+    
+    furi_mutex_release(scanner->mutex);
+    return filter_flags;
+}
+
+// Toggle a specific packet filter type
+void wifi_scanner_toggle_filter(WifiScanner* scanner, PacketFilterType filter_type) {
+    if (!scanner) return;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return;
+    }
+    
+    // Toggle the specific filter bit
+    scanner->filter_config.filter_flags ^= filter_type;
+    
+    furi_mutex_release(scanner->mutex);
 }

@@ -29,7 +29,7 @@ enum {
 #define MOCK_HANDSHAKE_SIZE 128
 #define UART_RX_BUFFER_SIZE 2048
 #define MARAUDER_RESPONSE_TIMEOUT_MS 5000
-#define UART_CONNECTION_TEST_TIMEOUT_MS 100
+#define UART_CONNECTION_TEST_TIMEOUT_MS 200  // Increased from 100ms for more reliable connection detection
 #define MARAUDER_CMD_BUFFER_SIZE 64
 
 typedef struct {
@@ -46,3 +46,19 @@ typedef struct {
     uint32_t timestamp;
     uint8_t channel;
 } CapturedPacket;
+
+// Packet filter types - bitmap flags for filtering specific WiFi packet types
+typedef enum {
+    PACKET_FILTER_NONE       = 0x00,  // No filtering (capture all)
+    PACKET_FILTER_BEACON     = 0x01,  // Beacon frames
+    PACKET_FILTER_PROBE_REQ  = 0x02,  // Probe request frames
+    PACKET_FILTER_PROBE_RESP = 0x04,  // Probe response frames
+    PACKET_FILTER_DATA       = 0x08,  // Data frames
+    PACKET_FILTER_DEAUTH     = 0x10,  // Deauthentication frames
+    PACKET_FILTER_EAPOL      = 0x20,  // EAPOL/handshake frames
+    PACKET_FILTER_ALL        = 0xFF   // All packet types
+} PacketFilterType;
+
+typedef struct {
+    uint8_t filter_flags;  // Bitmap of PacketFilterType flags
+} PacketFilterConfig;

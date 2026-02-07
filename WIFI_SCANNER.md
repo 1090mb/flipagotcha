@@ -57,24 +57,61 @@ typedef struct {
     uint32_t timestamp;              // Capture timestamp
     uint8_t channel;                 // Channel number
 } CapturedPacket;
+
+typedef enum {
+    PACKET_FILTER_NONE       = 0x00,  // No filtering
+    PACKET_FILTER_BEACON     = 0x01,  // Beacon frames
+    PACKET_FILTER_PROBE_REQ  = 0x02,  // Probe request frames
+    PACKET_FILTER_PROBE_RESP = 0x04,  // Probe response frames
+    PACKET_FILTER_DATA       = 0x08,  // Data frames
+    PACKET_FILTER_DEAUTH     = 0x10,  // Deauthentication frames
+    PACKET_FILTER_EAPOL      = 0x20,  // EAPOL/handshake frames
+    PACKET_FILTER_ALL        = 0xFF   // All packet types
+} PacketFilterType;
+
+typedef struct {
+    uint8_t filter_flags;  // Bitmap of PacketFilterType flags
+} PacketFilterConfig;
 ```
 
 ## User Interface
 
 ### Button Controls
+
+#### Main Screen
 - **OK button**: Toggle WiFi scanning on/off
   - First press: Start scan and packet capture
   - Second press: Stop scan and save captured packets
 - **Left arrow**: Initiate handshake with first detected network
 - **Right arrow**: Open eyes (unchanged)
-- **Up arrow**: Change to smile (unchanged)
+- **Up arrow**: Open packet filter menu
 - **Down arrow**: Change to frown (unchanged)
 - **Back button**: Exit app (unchanged)
 
+#### Filter Menu
+- **Up/Down arrows**: Navigate filter options
+- **OK button**: Toggle selected filter on/off, or select "Back" to return
+- **Back button**: Return to main screen
+
+### Packet Filter Options
+The filter menu allows you to select which packet types to capture:
+- **Beacon**: Beacon frames from access points
+- **Probe Req**: Probe request frames from devices
+- **Probe Resp**: Probe response frames from access points
+- **Data**: Data frames
+- **Deauth**: Deauthentication frames
+- **EAPOL**: EAPOL/handshake frames (WPA/WPA2 handshakes)
+
+Multiple filters can be enabled simultaneously. When all filters are disabled, no packets will be captured. By default, all filter types are enabled.
+
 ### Display Information
-- Top left: Scanning status and network count
-- Bottom left: Captured packet count
-- Center: Animated face (unchanged)
+- **Main Screen**:
+  - Top left: Scanning status and network count
+  - Bottom left: Captured packet count
+  - Center: Animated face (unchanged)
+- **Filter Menu**:
+  - List of packet types with checkboxes [X] for enabled, [ ] for disabled
+  - Navigation instructions at bottom
 
 ## Data Storage
 
@@ -151,6 +188,39 @@ Connect ESP32 to Flipper Zero GPIO pins:
 - GND (Pin 8) → ESP32 GND
 
 See [ESP32_SETUP.md](ESP32_SETUP.md) for complete setup instructions.
+
+## Packet Filtering
+
+### Overview
+The packet filtering feature allows selective capture of WiFi packet types, reducing storage usage and focusing on specific traffic of interest.
+
+### Filter Types
+- **PACKET_FILTER_BEACON (0x01)**: Beacon frames - periodic broadcasts from access points
+- **PACKET_FILTER_PROBE_REQ (0x02)**: Probe requests - devices searching for networks
+- **PACKET_FILTER_PROBE_RESP (0x04)**: Probe responses - AP responses to probe requests
+- **PACKET_FILTER_DATA (0x08)**: Data frames - actual network traffic
+- **PACKET_FILTER_DEAUTH (0x10)**: Deauthentication frames - disconnect messages
+- **PACKET_FILTER_EAPOL (0x20)**: EAPOL frames - WPA/WPA2 handshake packets
+- **PACKET_FILTER_ALL (0xFF)**: All packet types (default)
+
+### Implementation
+Filters are stored as bitmap flags, allowing multiple types to be enabled simultaneously:
+- Each filter type is a bit flag that can be toggled on/off
+- Filters are checked before packet capture begins
+- When only EAPOL filter is enabled, the ESP32 uses optimized `sniffpmkid` command
+- For other filter combinations, `sniffraw` is used and filtering happens during parsing
+
+### API
+```c
+// Set packet filter configuration
+void wifi_scanner_set_filter(WifiScanner* scanner, uint8_t filter_flags);
+
+// Get current filter configuration
+uint8_t wifi_scanner_get_filter(WifiScanner* scanner);
+
+// Toggle a specific filter type
+void wifi_scanner_toggle_filter(WifiScanner* scanner, PacketFilterType filter_type);
+```
 
 ## Building
 
