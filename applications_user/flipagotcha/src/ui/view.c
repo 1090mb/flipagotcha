@@ -407,8 +407,15 @@ static void input_callback(InputEvent* ev, void* ctx) {
                     if (st->settings_selection == SETTINGS_MENU_ITEM_COUNT - 1) {
                         // Back option
                         st->mode = UI_MODE_MAIN;
+                    } else {
+                        // TODO: Implement settings toggles
+                        // Future settings to implement:
+                        // - Auto Save: Toggle automatic capture file saving
+                        // - Save Interval: Cycle through 1m/5m/10m/30m intervals
+                        // - Audio: Toggle sound feedback for captures (requires Flipper speaker API)
+                        // - Channel: Manual channel selection (1-14) or Auto mode
+                        // These will require additional state variables in UiState and wifi_scanner
                     }
-                    // TODO: Implement settings toggles
                 }
                 break;
             case InputKeyBack:

@@ -80,11 +80,13 @@ typedef enum {
 } AttackType;
 
 // Session statistics
+// Note: Attack counters (deauth_sent, beacons_sent) count command invocations,
+// not actual transmitted frames. Accurate frame counts would require ESP32 feedback.
 typedef struct {
-    uint32_t handshakes_captured;
-    uint32_t deauth_sent;
-    uint32_t beacons_sent;
-    uint32_t pmkids_captured;
-    uint32_t session_start_time;
-    uint32_t total_packets;
+    uint32_t handshakes_captured;  // WPA/WPA2 handshakes captured
+    uint32_t deauth_sent;           // Deauth attack commands sent
+    uint32_t beacons_sent;          // Beacon spam commands sent
+    uint32_t pmkids_captured;       // PMKID hashes captured
+    uint32_t session_start_time;    // Session start timestamp
+    uint32_t total_packets;         // Total packets captured
 } SessionStats;

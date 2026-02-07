@@ -629,6 +629,8 @@ bool wifi_scanner_start_deauth(WifiScanner* scanner, uint8_t network_index) {
         
         if (result) {
             scanner->active_attack = ATTACK_TYPE_DEAUTH;
+            // Note: This counts command invocations, not actual frames transmitted
+            // Actual frame count would require ESP32 feedback
             scanner->stats.deauth_sent++;
         }
     }
@@ -669,6 +671,8 @@ bool wifi_scanner_start_beacon_spam(WifiScanner* scanner) {
         
         if (result) {
             scanner->active_attack = ATTACK_TYPE_BEACON_SPAM;
+            // Note: This counts command invocations, not actual frames transmitted
+            // Actual frame count would require ESP32 feedback
             scanner->stats.beacons_sent++;
         }
     }
