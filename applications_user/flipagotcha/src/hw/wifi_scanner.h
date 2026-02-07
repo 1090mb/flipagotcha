@@ -59,3 +59,30 @@ uint8_t wifi_scanner_get_filter(WifiScanner* scanner);
 
 // Toggle a specific packet filter type
 void wifi_scanner_toggle_filter(WifiScanner* scanner, PacketFilterType filter_type);
+
+// Start deauth attack on a specific network or broadcast
+bool wifi_scanner_start_deauth(WifiScanner* scanner, uint8_t network_index);
+
+// Stop deauth attack
+void wifi_scanner_stop_deauth(WifiScanner* scanner);
+
+// Start beacon spam attack
+bool wifi_scanner_start_beacon_spam(WifiScanner* scanner);
+
+// Stop beacon spam
+void wifi_scanner_stop_beacon_spam(WifiScanner* scanner);
+
+// Start PMKID capture mode
+bool wifi_scanner_start_pmkid_capture(WifiScanner* scanner);
+
+// Stop PMKID capture
+void wifi_scanner_stop_pmkid_capture(WifiScanner* scanner);
+
+// Enable/disable channel hopping
+void wifi_scanner_set_channel_hopping(WifiScanner* scanner, bool enabled);
+
+// Get session statistics
+SessionStats wifi_scanner_get_stats(WifiScanner* scanner);
+
+// Check if any attack is currently active
+AttackType wifi_scanner_get_active_attack(WifiScanner* scanner);

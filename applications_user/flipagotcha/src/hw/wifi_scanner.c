@@ -16,6 +16,9 @@ struct WifiScanner {
     bool is_capturing;
     bool esp32_connected;
     PacketFilterConfig filter_config;  // Packet filter configuration
+    AttackType active_attack;          // Currently active attack
+    bool channel_hopping;              // Channel hopping enabled
+    SessionStats stats;                // Session statistics
     FuriMutex* mutex;
     FuriString* rx_buffer;  // Buffer for incoming UART data
 };
@@ -601,4 +604,193 @@ void wifi_scanner_toggle_filter(WifiScanner* scanner, PacketFilterType filter_ty
     scanner->filter_config.filter_flags ^= filter_type;
     
     furi_mutex_release(scanner->mutex);
+}
+
+// Start deauth attack on a specific network or broadcast
+bool wifi_scanner_start_deauth(WifiScanner* scanner, uint8_t network_index) {
+    if (!scanner) return false;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return false;
+    }
+    
+    bool result = false;
+    
+    if (scanner->esp32_connected) {
+        // Build command: "attack -t deauth -a 0\n" where 0 is the network index
+        char cmd[64];
+        if (network_index < scanner->network_count) {
+            snprintf(cmd, sizeof(cmd), "attack -t deauth -a %u\n", network_index);
+        } else {
+            // Broadcast deauth to all networks
+            snprintf(cmd, sizeof(cmd), "attack -t deauth\n");
+        }
+        result = uart_write_str(cmd);
+        
+        if (result) {
+            scanner->active_attack = ATTACK_TYPE_DEAUTH;
+            // Note: This counts command invocations, not actual frames transmitted
+            // Actual frame count would require ESP32 feedback
+            scanner->stats.deauth_sent++;
+        }
+    }
+    
+    furi_mutex_release(scanner->mutex);
+    return result;
+}
+
+// Stop deauth attack
+void wifi_scanner_stop_deauth(WifiScanner* scanner) {
+    if (!scanner) return;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return;
+    }
+    
+    if (scanner->esp32_connected && scanner->active_attack == ATTACK_TYPE_DEAUTH) {
+        uart_write_str(MARAUDER_CMD_STOPSCAN);
+        scanner->active_attack = ATTACK_TYPE_NONE;
+    }
+    
+    furi_mutex_release(scanner->mutex);
+}
+
+// Start beacon spam attack
+bool wifi_scanner_start_beacon_spam(WifiScanner* scanner) {
+    if (!scanner) return false;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return false;
+    }
+    
+    bool result = false;
+    
+    if (scanner->esp32_connected) {
+        // Use Marauder's beacon list attack
+        result = uart_write_str("attack -t beacon -l\n");
+        
+        if (result) {
+            scanner->active_attack = ATTACK_TYPE_BEACON_SPAM;
+            // Note: This counts command invocations, not actual frames transmitted
+            // Actual frame count would require ESP32 feedback
+            scanner->stats.beacons_sent++;
+        }
+    }
+    
+    furi_mutex_release(scanner->mutex);
+    return result;
+}
+
+// Stop beacon spam
+void wifi_scanner_stop_beacon_spam(WifiScanner* scanner) {
+    if (!scanner) return;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return;
+    }
+    
+    if (scanner->esp32_connected && scanner->active_attack == ATTACK_TYPE_BEACON_SPAM) {
+        uart_write_str(MARAUDER_CMD_STOPSCAN);
+        scanner->active_attack = ATTACK_TYPE_NONE;
+    }
+    
+    furi_mutex_release(scanner->mutex);
+}
+
+// Start PMKID capture mode
+bool wifi_scanner_start_pmkid_capture(WifiScanner* scanner) {
+    if (!scanner) return false;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return false;
+    }
+    
+    bool result = false;
+    
+    if (scanner->esp32_connected) {
+        result = uart_write_str("sniffpmkid\n");
+        
+        if (result) {
+            scanner->active_attack = ATTACK_TYPE_PMKID;
+            scanner->is_capturing = true;
+        }
+    }
+    
+    furi_mutex_release(scanner->mutex);
+    return result;
+}
+
+// Stop PMKID capture
+void wifi_scanner_stop_pmkid_capture(WifiScanner* scanner) {
+    if (!scanner) return;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return;
+    }
+    
+    if (scanner->esp32_connected && scanner->active_attack == ATTACK_TYPE_PMKID) {
+        uart_write_str(MARAUDER_CMD_STOPSCAN);
+        scanner->active_attack = ATTACK_TYPE_NONE;
+        scanner->is_capturing = false;
+    }
+    
+    furi_mutex_release(scanner->mutex);
+}
+
+// Enable/disable channel hopping
+void wifi_scanner_set_channel_hopping(WifiScanner* scanner, bool enabled) {
+    if (!scanner) return;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return;
+    }
+    
+    scanner->channel_hopping = enabled;
+    
+    if (scanner->esp32_connected) {
+        if (enabled) {
+            // Enable channel hopping on ESP32
+            uart_write_str("channel -h\n");
+        } else {
+            // Disable hopping, set to specific channel
+            char cmd[32];
+            // Use first network's channel if available, otherwise default to 6
+            uint8_t channel = (scanner->network_count > 0) ? scanner->networks[0].channel : 6;
+            snprintf(cmd, sizeof(cmd), "channel -s %u\n", channel);
+            uart_write_str(cmd);
+        }
+    }
+    
+    furi_mutex_release(scanner->mutex);
+}
+
+// Get session statistics
+SessionStats wifi_scanner_get_stats(WifiScanner* scanner) {
+    SessionStats stats = {0};
+    
+    if (!scanner) return stats;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return stats;
+    }
+    
+    stats = scanner->stats;
+    stats.total_packets = scanner->packet_count;
+    
+    furi_mutex_release(scanner->mutex);
+    return stats;
+}
+
+// Check if any attack is currently active
+AttackType wifi_scanner_get_active_attack(WifiScanner* scanner) {
+    if (!scanner) return ATTACK_TYPE_NONE;
+    
+    if (furi_mutex_acquire(scanner->mutex, FuriWaitForever) != FuriStatusOk) {
+        return ATTACK_TYPE_NONE;
+    }
+    
+    AttackType attack = scanner->active_attack;
+    
+    furi_mutex_release(scanner->mutex);
+    return attack;
 }
