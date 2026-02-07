@@ -341,10 +341,25 @@ bool wifi_scanner_start_capture(WifiScanner* scanner) {
     }
     
     bool result = false;
+    uint8_t filter_flags = scanner->filter_config.filter_flags;
     
-    // Send Marauder sniffraw command
+    // Build capture command based on filter configuration
+    // Different ESP32 Marauder commands capture different packet types:
+    // - sniffraw: captures all raw packets (when filter is ALL or multiple types)
+    // - sniffpmkid: captures EAPOL handshake packets specifically
+    // - sniffbeacon: captures beacon frames only (if supported)
+    
     if (scanner->esp32_connected) {
-        result = uart_write_str(MARAUDER_CMD_SNIFFRAW);
+        // If only EAPOL filter is enabled, use sniffpmkid command
+        if (filter_flags == PACKET_FILTER_EAPOL) {
+            // Use sniffpmkid without channel specification (monitor all channels)
+            result = uart_write_str("sniffpmkid\n");
+        }
+        // For any other filter combination, use sniffraw
+        // Note: The actual filtering will happen when parsing received packets
+        else {
+            result = uart_write_str(MARAUDER_CMD_SNIFFRAW);
+        }
     }
     
     if (result || !scanner->esp32_connected) {
