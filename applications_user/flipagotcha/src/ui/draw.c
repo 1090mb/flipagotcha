@@ -50,11 +50,17 @@ static void draw_eyes_focused(Canvas* canvas, int x, int y) {
 }
 
 static void draw_eyes_crossed(Canvas* canvas, int x, int y) {
-    // Crossed eyes for confused state
-    set_px(canvas, x + 2, y + 2);
-    set_px(canvas, x + 4, y + 4);
-    set_px(canvas, x + 6, y + 2);
-    set_px(canvas, x + 4, y + 4);
+    // Crossed eyes for confused state - X X pattern
+    // Left eye (X)
+    set_px(canvas, x + 1, y + 1);
+    set_px(canvas, x + 3, y + 3);
+    set_px(canvas, x + 1, y + 3);
+    set_px(canvas, x + 3, y + 1);
+    // Right eye (X)
+    set_px(canvas, x + 5, y + 1);
+    set_px(canvas, x + 7, y + 3);
+    set_px(canvas, x + 5, y + 3);
+    set_px(canvas, x + 7, y + 1);
 }
 
 static void draw_eyes_happy(Canvas* canvas, int x, int y) {

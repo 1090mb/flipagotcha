@@ -748,9 +748,11 @@ void wifi_scanner_set_channel_hopping(WifiScanner* scanner, bool enabled) {
             // Enable channel hopping on ESP32
             uart_write_str("channel -h\n");
         } else {
-            // Disable hopping, set to current channel
+            // Disable hopping, set to specific channel
             char cmd[32];
-            snprintf(cmd, sizeof(cmd), "channel -s %u\n", scanner->networks[0].channel);
+            // Use first network's channel if available, otherwise default to 6
+            uint8_t channel = (scanner->network_count > 0) ? scanner->networks[0].channel : 6;
+            snprintf(cmd, sizeof(cmd), "channel -s %u\n", channel);
             uart_write_str(cmd);
         }
     }
