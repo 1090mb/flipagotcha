@@ -52,13 +52,29 @@ const char* SETTINGS_MENU_ITEMS[SETTINGS_MENU_ITEM_COUNT] = {
 
 /* ------------------------------------------------------------------ */
 static void draw_main_screen(Canvas* canvas, UiState* st) {
-    /* Draw the face */
-    draw_face(canvas,
-              40,               // x offset
-              20,               // y offset
-              st->eyes_closed,
-              /* Show happy when ESP32 connected, frown when not */
-              (st->wifi_scanner && !wifi_scanner_is_esp32_connected(st->wifi_scanner)));
+    /* Determine face expression based on state */
+    FaceExpression expression = FACE_NORMAL;
+    
+    if (st->wifi_scanner) {
+        bool esp32_connected = wifi_scanner_is_esp32_connected(st->wifi_scanner);
+        
+        if (!esp32_connected) {
+            expression = FACE_CONFUSED;  // No ESP32
+        } else if (st->active_attack != ATTACK_TYPE_NONE) {
+            expression = FACE_ATTACKING;  // Currently attacking
+        } else if (st->scanning) {
+            expression = FACE_SCANNING;  // Scanning for networks
+        } else if (st->packet_count > 0) {
+            expression = FACE_HAPPY;  // Has captured packets
+        } else {
+            expression = FACE_NORMAL;  // Idle and ready
+        }
+    } else {
+        expression = FACE_SLEEPING;  // No scanner
+    }
+    
+    /* Draw the face with appropriate expression */
+    draw_face_expression(canvas, 40, 20, expression);
     
     /* Draw WiFi status */
     canvas_set_font(canvas, FontSecondary);

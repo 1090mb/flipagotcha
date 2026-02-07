@@ -53,25 +53,78 @@ For detailed setup instructions, see **[ESP32_SETUP.md](ESP32_SETUP.md)**
 ### Demo Mode
 No ESP32? The app runs in DEMO mode with simulated data, so you can test the interface without hardware.
 
-## ✨ WiFi Scanner Features (NEW)
+## ✨ Advanced Features - Bettercap-Inspired Attacks (NEW!)
 
-The app now includes comprehensive WiFi scanning and packet capture capabilities:
+The app now includes powerful bettercap-inspired attack capabilities and an enhanced menu system:
 
-### Features
-- **Network Scanning**: Detect available WiFi networks in range
-- **Handshake Capture**: Initiate WPA/WPA2 handshakes with detected networks  
-- **Packet Capture**: Capture WiFi packets in real-time
-- **Data Storage**: Save captured packets to `/ext/apps_data/flipagotcha/capture.txt`
+### 🎯 Attack Capabilities
+- **Deauth Attacks**: Send deauthentication frames to disconnect clients from APs
+  - Target specific networks or broadcast to all
+  - Real-time attack status display
+- **Beacon Spam**: Inject fake beacon frames to create spoofed networks
+- **PMKID Capture**: Specialized mode for capturing PMKID hashes from WPA/WPA2 networks
+- **Channel Hopping**: Automatically cycle through WiFi channels for better coverage
 
-### Updated Button Controls
+### 📊 Session Statistics
+Track your WiFi security testing in real-time:
+- Handshakes captured
+- Deauth frames sent
+- Beacon frames injected
+- PMKIDs captured
+- Total packets captured
+
+### 🎨 Dynamic Face Expressions
+The face changes based on the app's state:
+- **Happy** (^_^) - Successfully captured packets
+- **Attacking** (>_<) - Active attack in progress
+- **Scanning** (•_•) - Scanning for networks
+- **Confused** (x_x) - ESP32 not connected
+- **Normal** (•‿•) - Ready and waiting
+
+### 🎛️ Enhanced Menu System
+Navigate with the directional buttons from the main screen:
+
+- **Left Arrow** → **Attack Menu**
+  - Launch deauth attacks
+  - Start beacon spam
+  - Enable PMKID capture
+  - Toggle channel hopping
+  - Stop active attacks
+
+- **Right Arrow** → **Statistics View**
+  - Real-time capture statistics
+  - Session performance metrics
+  - Attack success tracking
+
+- **Up Arrow** → **Packet Filter Menu**
+  - Filter by packet type (Beacon, Probe, Data, Deauth, EAPOL)
+  - Customize what packets to capture
+  - Optimize storage and processing
+
+- **Down Arrow** → **Settings Menu**
+  - Configure auto-save intervals
+  - Audio feedback options
+  - Channel preferences
+  - (More options coming soon)
+
+### 📱 Updated Button Controls
 - **OK** – Start/stop WiFi scanning and packet capture
-- **← (Left)** – Initiate handshake with the first detected network
-- **→ (Right)** – Open eyes manually  
-- **↑ / ↓** – Switch between smile and frown
+- **← (Left)** – Open Attack Menu
+- **→ (Right)** – View Statistics
+- **↑ (Up)** – Open Packet Filter Menu
+- **↓ (Down)** – Open Settings Menu
+- **Back** – Exit app or return to main screen
 
-### On-Screen Display
-- Network count and scanning status shown in top-left
-- Packet count shown in bottom-left
+### 📈 On-Screen Display
+- Network count and scanning status (top-left)
+- Active attack indicator (if attacking)
+- Packet count (bottom-left)
+- ESP32 connection status (top-right)
+
+### 💾 Data Storage
+- Captured packets saved to `/ext/apps_data/flipagotcha/capture.txt`
+- Session statistics tracked automatically
+- Support for multiple capture sessions
 
 For detailed technical documentation, see [WIFI_SCANNER.md](WIFI_SCANNER.md)
 
